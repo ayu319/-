@@ -21,104 +21,63 @@
             text-align: center; pointer-events: none; z-index: 10;
         }
         .item-box-ui {
-            width: 70px; height: 70px; border: 4px solid #fff; background: rgba(0,0,0,0.5);
-            border-radius: 12px; display: flex; align-items: center; justify-content: center;
-            font-size: 32px; box-shadow: 0 0 15px rgba(255,255,255,0.5); margin-top: 10px;
+            position: absolute; top: 20px; right: 20px; width: 80px; height: 80px;
+            border: 4px solid #fff; background: rgba(0,0,0,0.5); border-radius: 10px;
+            display: flex; align-items: center; justify-content: center; z-index: 10;
         }
-        #lap-times { margin-top: 10px; font-size: 14px; color: #aaa; }
-        #back-mirror {
-            position: absolute; bottom: 20px; right: 20px; width: 240px; height: 135px;
-            border: 3px solid #fff; border-radius: 8px; overflow: hidden; background: #000; z-index: 5;
-        }
+        .item-img-ui { width: 64px; height: 64px; display: none; }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 </head>
 <body>
-    <div id="countdown">3</div>
     <div id="ui-container">
-        <div id="rank-display" style="font-size: 28px; color: #ffeb3b; margin-bottom: 5px;">RANK: 4th</div>
-        <div id="lap-display" style="font-size: 20px;">LAP: 1 / 3</div>
-        <div id="coin-display" style="font-size: 20px; color: #ffd700;">COINS: 0</div>
-        <div id="speed-display" style="font-size: 16px; color: #00e5ff; margin-top: 5px;">SPEED: 0.0 km/h</div>
-        <div class="item-box-ui" id="item-slot">❓</div>
-        <div id="lap-times"></div>
+        <div>🏎️ SPEED: <span id="speed-val">0</span> km/h</div>
+        <div>🪙 COINS: <span id="coin-val">0</span> / 10</div>
+        <div>🏁 LAP: <span id="lap-val">1</span> / 3</div>
+        <div id="item-ammo-ui" style="margin-top:5px; color:#ffd700; display:none;">🔋 残弾: <span id="item-ammo-val">0</span></div>
     </div>
-    <div id="turbo-ui"></div>
-    <div id="back-mirror"></div>
+    <div id="countdown">3</div>
+    <div id="turbo-ui"><span id="turbo-text"></span></div>
+    <div class="item-box-ui" id="player-item-box">
+        <img id="player-item-img" class="item-img-ui" src="" alt="item">
+    </div>
 
     <script>
-        // --- Web Audio API 音源システム ---
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        function playTone(freq, duration, type="triangle", gainValue=0.1) {
-            try {
-                let osc = audioCtx.createOscillator();
-                let g = audioCtx.createGain();
-                osc.type = type; osc.frequency.value = freq;
-                g.gain.setValueAtTime(gainValue, audioCtx.currentTime);
-                g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
-                osc.connect(g); g.connect(audioCtx.destination);
-                osc.start(); osc.stop(audioCtx.currentTime + duration);
-            } catch(e){}
-        }
-        function soundDriftCharge() { playTone(300 + Math.random()*200, 0.05, "sawtooth", 0.05); }
-        function soundDriftRelease() { playTone(880, 0.15, "triangle", 0.15); playTone(1200, 0.2, "triangle", 0.15); }
-        function soundItemGet() { playTone(600, 0.1, "sine", 0.15); setTimeout(()=>playTone(800, 0.1, "sine", 0.15), 80); setTimeout(()=>playTone(1200, 0.2, "sine", 0.2), 160); }
-        function soundItemUse() { playTone(440, 0.1, "sawtooth", 0.1); playTone(554, 0.15, "sawtooth", 0.1); }
-        function soundMushroom() { playTone(880, 0.1, "sine", 0.2); setTimeout(()=>playTone(1320, 0.3, "sine", 0.2), 100); }
-        function soundHit() { playTone(150, 0.3, "sawtooth", 0.3); playTone(80, 0.4, "triangle", 0.3); }
-        function soundCoin() { playTone(987.77, 0.08, "sine", 0.15); setTimeout(()=>playTone(1318.51, 0.25, "sine", 0.15), 80); }
-        function soundRankUp() { playTone(523.25, 0.15, "sine", 0.15); setTimeout(()=>playTone(659.25, 0.15, "sine", 0.15), 100); setTimeout(()=>playTone(783.99, 0.25, "sine", 0.2), 200); }
-
-        // BGMシーケンサー
-        let bgmInterval = null;
-        function startBGM() {
-            let step = 0;
-            const bass = [55, 55, 65.4, 65.4, 73.4, 73.4, 82.4, 82.4];
-            const melody = [220, 0, 261.6, 293.7, 0, 329.6, 220, 0];
-            bgmInterval = setInterval(() => {
-                if (audioCtx.state === 'suspended') return;
-                if (step % 2 === 0) {
-                    playTone(bass[(step / 2) % bass.length], 0.2, "sawtooth", 0.05);
-                }
-                if (step % 4 === 0) {
-                    let m = melody[(step / 4) % melody.length];
-                    if (m > 0) playTone(m, 0.15, "triangle", 0.03);
-                }
-                if (step % 4 === 2) {
-                    playTone(100, 0.03, "triangle", 0.04);
-                }
-                step++;
-            }, 180);
-        }
-
-        // --- Three.js セットアップ ---
+        // --- ゲームの基本設定と初期化 ---
         const scene = new THREE.Scene();
-        scene.fog = new THREE.FogExp2(0x111111, 0.002);
-        const camera = new THREE.PerspectiveCamera(65, window.innerWidth/window.innerHeight, 0.1, 2000);
+        scene.background = new THREE.Color(0x1a1a24);
+        scene.fog = new THREE.FogExp2(0x1a1a24, 0.0015);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
         document.body.appendChild(renderer.domElement);
 
-        const mirrorCamera = new THREE.PerspectiveCamera(65, 240/135, 0.1, 1000);
-        const mirrorContainer = document.getElementById("back-mirror");
-        const mirrorRenderer = new THREE.WebGLRenderer({ antialias: true });
-        mirrorRenderer.setSize(240, 135);
-        mirrorContainer.appendChild(mirrorRenderer.domElement);
-
+        // 環境光 & 太陽光
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
         scene.add(ambientLight);
-        const dirLight = new THREE.DirectionalLight(0xffaa66, 0.8);
-        dirLight.position.set(100, 300, 100);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(100, 150, 50);
         dirLight.castShadow = true;
-        dirLight.shadow.mapSize.width = 1024;
-        dirLight.shadow.mapSize.height = 1024;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
         dirLight.shadow.camera.near = 0.5;
-        dirLight.shadow.camera.far = 1000;
-        const d = 300;
-        dirLight.shadow.camera.left = -d; dirLight.shadow.camera.right = d;
-        dirLight.shadow.camera.top = d; dirLight.shadow.camera.bottom = -d;
+        dirLight.shadow.camera.far = 500;
+        const d = 250;
+        dirLight.shadow.camera.left = -d;
+        dirLight.shadow.camera.right = d;
+        dirLight.shadow.camera.top = d;
+        dirLight.shadow.camera.bottom = -d;
         scene.add(dirLight);
+
+        // 工場用赤色警告灯
+        const alarmLight = new THREE.PointLight(0xff0000, 1.5, 100);
+        alarmLight.position.set(0, 30, 0);
+        scene.add(alarmLight);
+
         // --- コース設計 (元のマップデータを完全に復元) ---
         const NODE_COUNT = 36;
         const npcPathNodes = [
@@ -204,959 +163,555 @@
         const roadMesh = new THREE.Mesh(roadGeometry, roadMaterial);
         roadMesh.receiveShadow = true;
         scene.add(roadMesh);
-        roadGeometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-        roadGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-        roadGeometry.setIndex(indices);
-        roadGeometry.computeVertexNormals();
 
-        const roadMaterial = new THREE.MeshStandardMaterial({
-            vertexColors: true,
-            roughness: 0.8
-        });
-        const roadMesh = new THREE.Mesh(roadGeometry, roadMaterial);
-        roadMesh.receiveShadow = true;
-        scene.add(roadMesh);
+        // --- コース壁・ガードレール ---
+        const wallMaterial = new THREE.MeshStandardMaterial({ color: 0x3a3a44, metalness: 0.5, roughness: 0.5 });
+        const wallGeometryList = [];
 
-        const roadWidth = 26;
-        const roadGeometry = new THREE.BufferGeometry();
-        const vertices = [];
-        const indices = [];
-        const colors = [];
-
-        for (let i = 0; i <= NODE_COUNT; i++) {
-            let idx = i % NODE_COUNT;
-            let nextIdx = (i + 1) % NODE_COUNT;
-            let curr = npcPathNodes[idx];
-            let next = npcPathNodes[nextIdx];
-
-            let forward = new THREE.Vector3().subVectors(next, curr).normalize();
-            let up = new THREE.Vector3(0, 1, 0);
-            let right = new THREE.Vector3().crossVectors(forward, up).normalize().multiplyScalar(roadWidth / 2);
-            let leftPoint = curr.clone().sub(right);
-            let rightPoint = curr.clone().add(right);
-
-            vertices.push(leftPoint.x, leftPoint.y, leftPoint.z);
-            vertices.push(rightPoint.x, rightPoint.y, rightPoint.z);
-
-            let color = (idx > 10 && idx < 24) ? [0.4, 0.2, 0.2] : [0.25, 0.25, 0.25];
-            colors.push(...color, ...color);
-
-            if (i < NODE_COUNT) {
-                let currRow = i * 2;
-                let nextRow = (i + 1) * 2;
-                indices.push(currRow, currRow + 1, nextRow);
-                indices.push(currRow + 1, nextRow + 1, nextRow);
-            }
-        }
-
-        roadGeometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-        roadGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-        roadGeometry.setIndex(indices);
-        roadGeometry.computeVertexNormals();
-
-        const roadMaterial = new THREE.MeshStandardMaterial({
-            vertexColors: true,
-            roughness: 0.8
-        });
-        const roadMesh = new THREE.Mesh(roadGeometry, roadMaterial);
-        roadMesh.receiveShadow = true;
-        scene.add(roadMesh);
-        ];
-        const NODE_COUNT = 36;
-        const npcPathNodes = [];
-        for (let i = 0; i < NODE_COUNT; i++) {
-            let angle = (i / NODE_COUNT) * Math.PI * 2;
-            let radius = 250 + Math.sin(angle * 3) * 80;
-            let y = 0;
-            if (i > 12 && i < 20) { y = (i - 12) * 4; }
-            else if (i >= 20 && i < 28) { y = 32 - (i - 20) * 4; }
-            npcPathNodes.push(new THREE.Vector3(Math.cos(angle)*radius, y, Math.sin(angle)*radius));
-        }
-
-        const roadWidth = 26;
-        const roadGeometry = new THREE.BufferGeometry();
-        const vertices = [];
-        const indices = [];
-        const colors = [];
-
-        for (let i = 0; i <= NODE_COUNT; i++) {
-            let idx = i % NODE_COUNT;
-            let nextIdx = (i + 1) % NODE_COUNT;
-            let curr = npcPathNodes[idx];
-            let next = npcPathNodes[nextIdx];
-
-            let forward = new THREE.Vector3().subVectors(next, curr).normalize();
-            let up = new THREE.Vector3(0, 1, 0);
-            let right = new THREE.Vector3().crossVectors(forward, up).normalize().multiplyScalar(roadWidth / 2);
-
-            let leftPoint = curr.clone().sub(right);
-            let rightPoint = curr.clone().add(right);
-
-            vertices.push(leftPoint.x, leftPoint.y, leftPoint.z);
-            vertices.push(rightPoint.x, rightPoint.y, rightPoint.z);
-
-            let color = (idx > 10 && idx < 24) ? [0.4, 0.2, 0.2] : [0.25, 0.25, 0.25];
-            colors.push(...color, ...color);
-
-            if (i < NODE_COUNT) {
-                let currRow = i * 2;
-                let nextRow = (i + 1) * 2;
-                indices.push(currRow, currRow + 1, nextRow);
-                indices.push(currRow + 1, nextRow + 1, nextRow);
-            }
-        }
-        roadGeometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-        roadGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-        roadGeometry.setIndex(indices);
-        roadGeometry.computeVertexNormals();
-
-        const roadMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.8 });
-        const roadMesh = new THREE.Mesh(roadGeometry, roadMaterial);
-        roadMesh.receiveShadow = true;
-        scene.add(roadMesh);
-
-        // コース壁・ガードレール
-        const wallMaterial = new THREE.MeshStandardMaterial({ color: 0xff3366, metalness: 0.3, roughness: 0.5 });
-        const wallGroup = new THREE.Group();
         for (let i = 0; i < NODE_COUNT; i++) {
             let idx = i;
             let nextIdx = (i + 1) % NODE_COUNT;
             let curr = npcPathNodes[idx];
             let next = npcPathNodes[nextIdx];
 
-            let forward = new THREE.Vector3().subVectors(next, curr).normalize();
-            let right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0,1,0)).normalize().multiplyScalar(roadWidth / 2);
+            let forward = new THREE.Vector3().subVectors(next, curr);
+            let len = forward.length();
+            forward.normalize();
+            let right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize().multiplyScalar(roadWidth / 2);
 
-            let pL1 = curr.clone().sub(right);
-            let pL2 = next.clone().sub(right);
-            let dist = pL1.distanceTo(pL2);
-            let wallGeom = new THREE.BoxGeometry(0.8, 4, dist);
-            let wall = new THREE.Mesh(wallGeom, wallMaterial);
-            let midPoint = new THREE.Vector3().addVectors(pL1, pL2).multiplyScalar(0.5);
-            wall.position.copy(midPoint);
-            wall.position.y += 2;
-            wall.lookAt(pL2.clone().add(new THREE.Vector3(0, 2, 0)));
-            wallGroup.add(wall);
+            let wallGeo = new THREE.BoxGeometry(1, 4, len);
 
-            let pR1 = curr.clone().add(right);
-            let pR2 = next.clone().add(right);
-            let wallGeomR = new THREE.BoxGeometry(0.8, 4, dist);
-            let wallR = new THREE.Mesh(wallGeomR, wallMaterial);
-            let midPointR = new THREE.Vector3().addVectors(pR1, pR2).multiplyScalar(0.5);
-            wallR.position.copy(midPointR);
-            wallR.position.y += 2;
-            wallR.lookAt(pR2.clone().add(new THREE.Vector3(0, 2, 0)));
-            wallGroup.add(wallR);
+            // 左壁
+            let wl = new THREE.Mesh(wallGeo, wallMaterial);
+            let posL = curr.clone().add(forward.clone().multiplyScalar(len / 2)).sub(right).add(new THREE.Vector3(0, 2, 0));
+            wl.position.copy(posL);
+            wl.lookAt(next.clone().sub(right).add(new THREE.Vector3(0, 2, 0)));
+            wl.castShadow = true;
+            wl.receiveShadow = true;
+            scene.add(wl);
+
+            // 右壁
+            let wr = new THREE.Mesh(wallGeo, wallMaterial);
+            let posR = curr.clone().add(forward.clone().multiplyScalar(len / 2)).add(right).add(new THREE.Vector3(0, 2, 0));
+            wr.position.copy(posR);
+            wr.lookAt(next.clone().add(right).add(new THREE.Vector3(0, 2, 0)));
+            wr.castShadow = true;
+            wr.receiveShadow = true;
+            scene.add(wr);
         }
-        scene.add(wallGroup);
 
-        // 装飾用オブジェクト（コンテナ、巨大プレス機）
-        const obstacleGroup = new THREE.Group();
-        scene.add(obstacleGroup);
+        // 工場の装飾：動く大歯車
+        const gears = [];
+        const gearGeo = new THREE.CylinderGeometry(20, 20, 4, 16);
+        const gearMat = new THREE.MeshStandardMaterial({ color: 0x666677, metalness: 0.8, roughness: 0.2 });
+        for (let i = 0; i < 3; i++) {
+            const gear = new THREE.Mesh(gearGeo, gearMat);
+            gear.position.set(-80 + i * 80, -5, -80);
+            gear.rotation.x = Math.PI / 2;
+            scene.add(gear);
+            gears.push(gear);
+        }
 
-        const pressGeometry = new THREE.BoxGeometry(10, 15, 10);
-        const pressMaterial = new THREE.MeshStandardMaterial({ color: 0x778899, metalness: 0.8, roughness: 0.2 });
-        const presses = [];
-        const pressPositions = [12, 16, 20];
-        pressPositions.forEach(idx => {
-            let mesh = new THREE.Mesh(pressGeometry, pressMaterial);
-            let p = npcPathNodes[idx];
-            mesh.position.set(p.x, 25, p.z);
-            scene.add(mesh);
-            presses.push({ mesh: mesh, baseHeight: 25, offset: Math.random() * Math.PI });
-        });
-
-        // 泥沼地帯（泥トラップ：入ると大幅減速）
-        const mudGeom = new THREE.RingGeometry(220, 240, 30);
-        const mudMat = new THREE.MeshStandardMaterial({ color: 0x8b5a2b, roughness: 1.0, side: THREE.DoubleSide });
-        const mud = new THREE.Mesh(mudGeom, mudMat);
-        mud.rotation.x = Math.PI / 2;
-        mud.position.y = -0.2;
-        scene.add(mud);
-
-        // アイテムボックスの設置
-        const itemBoxGroup = new THREE.Group();
-        const itemBoxes = [];
-        const itemBoxGeom = new THREE.BoxGeometry(3, 3, 3);
-        const itemBoxMat = new THREE.MeshStandardMaterial({ color: 0x00ffff, transparent: true, opacity: 0.7, wireframe: false });
-        const itemBoxSpawnPoints = [4, 10, 18, 25, 30];
-
-        itemBoxSpawnPoints.forEach(idx => {
-            let baseNode = npcPathNodes[idx];
-            for (let side = -1; side <= 1; side += 2) {
-                let forward = new THREE.Vector3().subVectors(npcPathNodes[(idx+1)%NODE_COUNT], baseNode).normalize();
-                let right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0,1,0)).normalize().multiplyScalar(side * 6);
-                let box = new THREE.Mesh(itemBoxGeom, itemBoxMat);
-                box.position.set(baseNode.x + right.x, 2.5, baseNode.z + right.z);
-                itemBoxGroup.add(box);
-                itemBoxes.push({ mesh: box, active: true, respawnTimer: 0, ox: box.position.x, oy: box.position.y, oz: box.position.z });
-            }
-        });
-        scene.add(itemBoxGroup);
-
-        // コインの設置
-        const coinGroup = new THREE.Group();
+        // --- コイン、アイテムボックス、障害物の配置 ---
         const coins = [];
-        const coinGeom = new THREE.CylinderGeometry(1, 1, 0.2, 8);
+        const coinGeo = new THREE.CylinderGeometry(1.5, 1.5, 0.4, 16);
         const coinMat = new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.9, roughness: 0.1 });
-        const coinSpawnPoints = [2, 6, 8, 14, 22, 28, 32, 34];
+        coinGeo.rotateX(Math.PI / 2);
 
-        coinSpawnPoints.forEach(idx => {
-            let baseNode = npcPathNodes[idx];
-            for (let i = -1; i <= 1; i++) {
-                let forward = new THREE.Vector3().subVectors(npcPathNodes[(idx+1)%NODE_COUNT], baseNode).normalize();
-                let right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0,1,0)).normalize().multiplyScalar(i * 5);
-                let coinMesh = new THREE.Mesh(coinGeom, coinMat);
-                coinMesh.rotation.x = Math.PI / 2;
-                coinMesh.position.set(baseNode.x + right.x, 1.5, baseNode.z + right.z);
-                coinMesh.castShadow = true;
-                coinGroup.add(coinMesh);
-                coins.push({ mesh: coinMesh, active: true, respawnTimer: 0, index: idx });
+        const itemBoxes = [];
+        const itemBoxGeo = new THREE.BoxGeometry(3, 3, 3);
+        const itemBoxMat = new THREE.MeshStandardMaterial({ color: 0x00ffff, transparent: true, opacity: 0.7, wireframe: false });
+
+        const mudPools = [];
+        const mudGeo = new THREE.PlaneGeometry(16, 20);
+        const mudMat = new THREE.MeshBasicMaterial({ color: 0x4a2a0a, side: THREE.DoubleSide });
+        mudGeo.rotateX(-Math.PI / 2);
+
+        const crushers = [];
+        const crusherGeo = new THREE.BoxGeometry(10, 15, 10);
+        const crusherMat = new THREE.MeshStandardMaterial({ color: 0x22222a, metalness: 0.9, roughness: 0.1 });
+
+        // コース上に要素を等間隔で配置
+        for (let i = 0; i < NODE_COUNT; i++) {
+            let curr = npcPathNodes[i];
+            let next = npcPathNodes[(i + 1) % NODE_COUNT];
+            let mid = new THREE.Vector3().addVectors(curr, next).multiplyScalar(0.5);
+
+            // コインの配置 (3ノードおき)
+            if (i % 3 === 1) {
+                const coin = new THREE.Mesh(coinGeo, coinMat);
+                coin.position.copy(mid).add(new THREE.Vector3(0, 1.5, 0));
+                scene.add(coin);
+                coins.push(coin);
             }
-        });
-        scene.add(coinGroup);
+            // アイテムボックスの配置 (5ノードおき)
+            if (i % 5 === 2) {
+                const box = new THREE.Mesh(itemBoxGeo, itemBoxMat);
+                box.position.copy(mid).add(new THREE.Vector3(0, 2, 0));
+                scene.add(box);
+                itemBoxes.push({ mesh: box, respawnTimer: 0 });
+            }
+            // 泥沼 (特定の後半暗いエリア)
+            if (i === 15 || i === 18) {
+                const mud = new THREE.Mesh(mudGeo, mudMat);
+                mud.position.copy(mid).add(new THREE.Vector3(0, 0.05, 0));
+                scene.add(mud);
+                mudPools.push(mud);
+            }
+            // プレス機 (特定の危険エリア)
+            if (i === 12 || i === 22) {
+                const crusher = new THREE.Mesh(crusherGeo, crusherMat);
+                crusher.position.copy(mid).add(new THREE.Vector3(0, 15, 0)); // 初期状態は上空
+                scene.add(crusher);
+                crushers.push({ mesh: crusher, cycle: Math.random() * Math.PI, state: 'up' });
+            }
+        }
 
-        // 障害物：バナナ
-        const hazardGroup = new THREE.Group();
-        const hazards = [];
-        scene.add(hazardGroup);
+        // --- プレイヤーとNPCの設定 ---
+        const kartGeo = new THREE.BoxGeometry(3, 1.5, 5);
+        const playerMat = new THREE.MeshStandardMaterial({ color: 0xff3333, metalness: 0.5, roughness: 0.5 });
+        const player = new THREE.Mesh(kartGeo, playerMat);
+        player.position.set(0, 0.75, 0);
+        player.castShadow = true;
+        scene.add(player);
 
-        // 障害物：こうら
-        const shells = [];
-
-        // --- カート(自車)の実装 ---
-        const cartGroup = new THREE.Group();
-        const bodyGeom = new THREE.BoxGeometry(3, 1, 5);
-        const bodyMat = new THREE.MeshStandardMaterial({ color: 0x3388ff, metalness: 0.5, roughness: 0.2 });
-        const body = new THREE.Mesh(bodyGeom, bodyMat);
-        body.position.y = 1;
-        body.castShadow = true;
-        cartGroup.add(body);
-
-        const wheelGeom = new THREE.CylinderGeometry(0.8, 0.8, 0.6, 12);
-        const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
-        const wheels = [];
-        const wheelPositions = [
-            [-1.6, 0.8, 1.8], [1.6, 0.8, 1.8],
-            [-1.6, 0.8, -1.8], [1.6, 0.8, -1.8]
-        ];
-        wheelPositions.forEach(pos => {
-            let w = new THREE.Mesh(wheelGeom, wheelMat);
-            w.rotation.z = Math.PI / 2;
-            w.position.set(pos[0], pos[1], pos[2]);
-            w.castShadow = true;
-            cartGroup.add(w);
-            wheels.push(w);
-        });
-        scene.add(cartGroup);
-
-        // ライバル(NPC)の作成
-        const npcs = [
-            { id: "キノピオ", color: 0xff3333, progress: 0.0, lap: 1, baseSpeed: 0.00105, speed: 0, mesh: null, heldItem: null, itemUseTimer: 0, isSquished: 0, isMega: 0 },
-            { id: "クッパ", color: 0x33aa33, progress: 0.0, lap: 1, baseSpeed: 0.00110, speed: 0, mesh: null, heldItem: null, itemUseTimer: 0, isSquished: 0, isMega: 0 },
-            { id: "ルイージ", color: 0x33ff33, progress: 0.0, lap: 1, baseSpeed: 0.00103, speed: 0, mesh: null, heldItem: null, itemUseTimer: 0, isSquished: 0, isMega: 0 },
-        ];
-        npcs.forEach((npc, index) => {
-            let g = new THREE.Group();
-            let b = new THREE.Mesh(new THREE.BoxGeometry(3, 1, 5), new THREE.MeshStandardMaterial({ color: npc.color }));
-            b.position.y = 1;
-            g.add(b);
-            wheelPositions.forEach(pos => {
-                let w = new THREE.Mesh(wheelGeom, wheelMat);
-                w.rotation.z = Math.PI / 2;
-                w.position.set(pos[0], pos[1], pos[2]);
-                g.add(w);
-            });
-            scene.add(g);
-            npc.mesh = g;
-            let startNode = npcPathNodes[0];
-            g.position.set(startNode.x + (index - 1)*6, 0, startNode.z + (index - 1)*6);
-        });
-
-        // プレイヤー初期化
-        let playerPosX = 0;
-        let playerPosZ = 0;
-        let playerProgress = 0.0;
-        let playerLap = 1;
-        const playerStartPos = npcPathNodes[0];
-        playerPosX = playerStartPos.x;
-        playerPosZ = playerStartPos.z;
-        cartGroup.position.set(playerPosX, 0, playerPosZ);
-
-        // --- 走行物理・ゲーム状態パラメータ ---
+        // プレイヤーの物理ステータス
         let speed = 0;
-        let maxNormalSpeed = 1.6;
-        let acceleration = 0.02;
-        let deceleration = 0.015;
-        let friction = 0.005;
-        let yaw = Math.PI / 2;
+        let maxSpeed = 1.6;
+        const accel = 0.02;
+        const decel = 0.015;
+        const drag = 0.985;
+        let angle = Math.PI; // スタート時逆方向を向かないように調整
 
-        let keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false, Space: false, KeyShift: false, KeyZ: false };
-        let canDrive = false;
+        const keys = {};
+        window.addEventListener('keydown', e => { keys[e.code] = true; });
+        window.addEventListener('keyup', e => { keys[e.code] = false; });
 
-        let coinsCollected = 0;
-        let rank = 4;
-        let lapTimes = [];
-        let totalFrame = 0;
-        let lapFrame = 0;
-        let isFinished = false;
-
-        let isDrifting = false;
-        let driftDirection = 0;
-        let driftTimer = 0;
-        let mtSparkLevel = 0;
-        let turboTimer = 0;
-        let isJumping = false;
-        let jumpY = 0;
-        let jumpVelocity = 0;
-
-        // アイテムシステム
+        // ゲーム状態変数
+        let coinCount = 0;
+        let playerLap = 1;
+        let currentProgressNode = 0;
         let currentItem = null;
-        let itemRouletteTimer = 0;
+        let itemAmmo = 0;
+        let isSquishedTimer = 0;
         let itemMushroomTimer = 0;
         let itemGoldenTimer = 0;
-        let itemStarTimer = 0;
         let itemBooTimer = 0;
-        let isSquishedTimer = 0;
         let playerHitInvincibleTimer = 0;
+        let countdownVal = 3;
+        let gameActive = false;
 
-        // パーティクルシステム
-        const particleGroup = new THREE.Group();
-        scene.add(particleGroup);
-        const particles = [];
-        function createSmoke(pos, color=0xffffff, size=0.4) {
-            let geo = new THREE.BoxGeometry(size, size, size);
-            let mat = new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 0.8 });
-            let m = new THREE.Mesh(geo, mat);
-            m.position.copy(pos);
-            particleGroup.add(m);
-            particles.push({ mesh: m, life: 30, maxLife: 30, vel: new THREE.Vector3((Math.random()-0.5)*0.3, 0.2 + Math.random()*0.3, (Math.random()-0.5)*0.3) });
+        // UI要素
+        const speedVal = document.getElementById('speed-val');
+        const coinVal = document.getElementById('coin-val');
+        const lapVal = document.getElementById('lap-val');
+        const countdown = document.getElementById('countdown');
+        const turboText = document.getElementById('turbo-text');
+        const playerItemImg = document.getElementById('player-item-img');
+        const itemAmmoUi = document.getElementById('item-ammo-ui');
+        const itemAmmoVal = document.getElementById('item-ammo-val');
+
+        // 音声効果 (簡易シンセ)
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        function playTone(freq, duration, type="sine") {
+            try {
+                let osc = audioCtx.createOscillator();
+                let gain = audioCtx.createGain();
+                osc.type = type;
+                osc.frequency.value = freq;
+                gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+                osc.stop(audioCtx.currentTime + duration);
+            } catch(e){}
         }
+        function soundCoin() { playTone(880, 0.1); setTimeout(()=>playTone(1320, 0.2), 80); }
+        function soundItem() { playTone(440, 0.05); setTimeout(()=>playTone(660, 0.05), 50); setTimeout(()=>playTone(880, 0.1), 100); }
+        function soundUseItem() { playTone(587.33, 0.15, "square"); }
+        function soundHit() { playTone(150, 0.4, "sawtooth"); }
 
-        // --- キー操作イベント ---
-        window.addEventListener('keydown', e => {
-            if (audioCtx.state === 'suspended') audioCtx.resume();
-            if (e.code === "ArrowUp" || e.code === "KeyW") keys.ArrowUp = true;
-            if (e.code === "ArrowDown" || e.code === "KeyS") keys.ArrowDown = true;
-            if (e.code === "ArrowLeft" || e.code === "KeyA") keys.ArrowLeft = true;
-            if (e.code === "ArrowRight" || e.code === "KeyD") keys.ArrowRight = true;
-            if (e.code === "Space") keys.Space = true;
-            if (e.shiftKey || e.code === "ShiftLeft") keys.KeyShift = true;
-            if (e.code === "KeyZ") {
-                if (!keys.KeyZ) useItem();
-                keys.KeyZ = true;
-            }
-        });
-        window.addEventListener('keyup', e => {
-            if (e.code === "ArrowUp" || e.code === "KeyW") keys.ArrowUp = false;
-            if (e.code === "ArrowDown" || e.code === "KeyS") keys.ArrowDown = false;
-            if (e.code === "ArrowLeft" || e.code === "KeyA") keys.ArrowLeft = false;
-            if (e.code === "ArrowRight" || e.code === "KeyD") keys.ArrowRight = false;
-            if (e.code === "Space") keys.Space = false;
-            if (!e.shiftKey && e.code !== "ShiftLeft") keys.KeyShift = false;
-            if (e.code === "KeyZ") keys.KeyZ = false;
+        // NPCカートの設定 (3台追加して競合を激しくする)
+        const npcColors = [0x3333ff, 0x33ff33, 0xffff33];
+        const npcs = npcColors.map((color, index) => {
+            const mat = new THREE.MeshStandardMaterial({ color: color, metalness: 0.5, roughness: 0.5 });
+            const mesh = new THREE.Mesh(kartGeo, mat);
+            mesh.castShadow = true;
+            scene.add(mesh);
+            return {
+                mesh: mesh,
+                progress: 0.005 + index * 0.002,
+                speed: 0.9 + Math.random() * 0.2,
+                lap: 1,
+                isMega: 0,
+                heldItem: null,
+                itemUseTimer: 0
+            };
         });
 
-        // --- アイテム抽選アルゴリズム（キラーを安全に除外して確率をリバランス） ---
-        function lotteryItem(currentRank) {
-            const itemsPool = [
-                { item: 'mushroom', weight: [60, 40, 20, 10] },
-                { item: 'golden_mushroom', weight: [0, 20, 45, 45] }, // killerの枠をリバランス
-                { item: 'star', weight: [0, 15, 25, 45] },            // killerの枠をリバランス
-                { item: 'banana', weight: [40, 10, 0, 0] },
-                { item: 'green_shell', weight: [30, 30, 10, 0] },
-                { item: 'boo', weight: [10, 10, 10, 20] }
-            ];
-            let rankIndex = Math.min(3, Math.max(0, currentRank - 1));
-            let totalWeight = 0;
-            itemsPool.forEach(i => totalWeight += i.weight[rankIndex]);
-            let r = Math.random() * totalWeight;
-            let sum = 0;
-            for (let i = 0; i < itemsPool.length; i++) {
-                sum += itemsPool[i].weight[rankIndex];
-                if (r <= sum) return itemsPool[i].item;
-            }
-            return 'mushroom';
-        }
+        // 障害物の巨大鉄球（動き回るギミック）
+        const ballGeo = new THREE.SphereGeometry(4, 16, 16);
+        const ballMat = new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.9, roughness: 0.1 });
+        const ironBall = new THREE.Mesh(ballGeo, ballMat);
+        ironBall.castShadow = true;
+        scene.add(ironBall);
+        let ballProgress = 0.5;
 
-        // --- アイテム使用処理（キラーの項目を削除） ---
-        function useItem() {
-            if (!currentItem || itemRouletteTimer > 0) return;
-            soundItemUse();
+        // アイテム定義
+        const ITEM_TYPES = [
+            { name: "ダッシュキノコ", img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/active-items/mach-bike.png", color: 0xff0000 },
+            { name: "トリプルキノコ", img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/active-items/mach-bike.png", color: 0xff3333 },
+            { name: "金ピカキノコ", img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/active-items/mach-bike.png", color: 0xffd700 },
+            { name: "テレサ", img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/active-items/mach-bike.png", color: 0xaaaaaa },
+            { name: "サンダー", img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/active-items/mach-bike.png", color: 0xffff00 },
+            { name: "メガキノコ", img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/active-items/mach-bike.png", color: 0xff8800 }
+        ];
 
-            let forward = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw)).normalize();
-
-            if (currentItem === 'mushroom') {
-                turboTimer = 90;
-                soundMushroom();
-            } else if (currentItem === 'golden_mushroom') {
-                itemGoldenTimer = 300; 
-                turboTimer = 60;
-                soundMushroom();
-            } else if (currentItem === 'star') {
-                itemStarTimer = 400;
-            } else if (currentItem === 'banana') {
-                let bananaMesh = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 1, 8), new THREE.MeshStandardMaterial({ color: 0xffeb3b }));
-                bananaMesh.position.set(cartGroup.position.x - forward.x * 6, 0.5, cartGroup.position.z - forward.z * 6);
-                hazardGroup.add(bananaMesh);
-                hazards.push({ mesh: bananaMesh, type: 'banana', x: bananaMesh.position.x, z: bananaMesh.position.z });
-            } else if (currentItem === 'green_shell') {
-                let shellMesh = new THREE.Mesh(new THREE.SphereGeometry(1, 8, 8), new THREE.MeshStandardMaterial({ color: 0x33cc33 }));
-                shellMesh.position.set(cartGroup.position.x + forward.x * 6, 1.0, cartGroup.position.z + forward.z * 6);
-                hazardGroup.add(shellMesh);
-                shells.push({ mesh: shellMesh, dir: forward.clone(), type: 'green' });
-            } else if (currentItem === 'boo') {
-                itemBooTimer = 240;
-                let candidates = npcs.filter(n => n.heldItem !== null);
-                if (candidates.length > 0) {
-                    let target = candidates[Math.floor(Math.random() * candidates.length)];
-                    currentItem = target.heldItem;
-                    target.heldItem = null;
-                    document.getElementById("item-slot").innerText = itemIcon(currentItem);
-                    return;
-                }
-            }
-
-            if (itemGoldenTimer > 0 && currentItem === 'golden_mushroom') {
-                turboTimer = 60;
-                soundMushroom();
+        // カウントダウン処理
+        const cdInterval = setInterval(() => {
+            countdownVal--;
+            if (countdownVal > 0) {
+                countdown.innerText = countdownVal;
+                playTone(440, 0.1);
+            } else if (countdownVal === 0) {
+                countdown.innerText = "GO!";
+                playTone(880, 0.3);
+                gameActive = true;
             } else {
-                currentItem = null;
-                document.getElementById("item-slot").innerText = "❓";
-            }
-        }
-
-        // NPC用のアイテム発動（元の状態を完全に維持）
-        function useNpcItem(npc) {
-            if (!npc.heldItem) return;
-            let pIdx = Math.floor(npc.progress * NODE_COUNT);
-            let pNode = npcPathNodes[pIdx % NODE_COUNT];
-            if (npc.heldItem === 'mushroom') {
-                npc.speed += 0.8;
-            } else if (npc.heldItem === 'star') {
-                npc.isMega = 300;
-            } else if (npc.heldItem === 'banana') {
-                let b = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 1, 8), new THREE.MeshStandardMaterial({ color: 0xffeb3b }));
-                b.position.set(npc.mesh.position.x, 0.5, npc.mesh.position.z);
-                hazardGroup.add(b);
-                hazards.push({ mesh: b, type: 'banana', x: b.position.x, z: b.position.z });
-            }
-            npc.heldItem = null;
-        }
-
-        function itemIcon(item) {
-            if (item === 'mushroom') return '🍄';
-            if (item === 'golden_mushroom') return '👑';
-            if (item === 'star') return '⭐';
-            if (item === 'banana') return '🍌';
-            if (item === 'green_shell') return '🐢';
-            if (item === 'boo') return '👻';
-            return '❓';
-        }
-
-        // コインロスト処理
-        function dropCoins() {
-            let lost = Math.min(coinsCollected, 3);
-            coinsCollected -= lost;
-            for (let i = 0; i < lost; i++) {
-                let coinMesh = new THREE.Mesh(coinGeom, coinMat);
-                coinMesh.rotation.x = Math.PI / 2;
-                coinMesh.position.set(cartGroup.position.x + (Math.random()-0.5)*15, 1.5, cartGroup.position.z + (Math.random()-0.5)*15);
-                coinGroup.add(coinMesh);
-                coins.push({ mesh: coinMesh, active: true, respawnTimer: 200, index: -1 });
-            }
-            document.getElementById("coin-display").innerText = "COINS: " + coinsCollected;
-        }
-
-        // コースに沿った進行度の概算判定 (元のロジックを完全維持)
-        function getClosestProgress(pos) {
-            let minDist = Infinity;
-            let closestSegment = 0;
-            for (let i = 0; i < NODE_COUNT; i++) {
-                let d = pos.distanceTo(npcPathNodes[i]);
-                if (d < minDist) { minDist = d; closestSegment = i; }
-            }
-            let nextSegment = (closestSegment + 1) % NODE_COUNT;
-            let prevSegment = (closestSegment - 1 + NODE_COUNT) % NODE_COUNT;
-            let p1 = npcPathNodes[prevSegment];
-            let p2 = npcPathNodes[closestSegment];
-            let p3 = npcPathNodes[nextSegment];
-
-            let v1 = new THREE.Vector3().subVectors(p3, p2).normalize();
-            let v2 = new THREE.Vector3().subVectors(pos, p2);
-            let proj = v2.dot(v1);
-            let segLength = p2.distanceTo(p3);
-            let t = THREE.MathUtils.clamp(proj / segLength, 0, 1);
-
-            return (closestSegment + t) / NODE_COUNT;
-        }
-
-        // --- カウントダウン演出 ---
-        let countdownTimer = 3;
-        let countdownElement = document.getElementById("countdown");
-        let countdownInterval = setInterval(() => {
-            countdownTimer--;
-            if (countdownTimer === 2) { countdownElement.innerText = "2"; playTone(440, 0.15, "sine", 0.15); }
-            else if (countdownTimer === 1) { countdownElement.innerText = "1"; playTone(440, 0.15, "sine", 0.15); }
-            else if (countdownTimer === 0) {
-                countdownElement.innerText = "GO!!";
-                countdownElement.style.color = "#ffeb3b";
-                playTone(880, 0.4, "sine", 0.25);
-                canDrive = true;
-                startBGM();
-            } else if (countdownTimer < 0) {
-                countdownElement.style.display = "none";
-                clearInterval(countdownInterval);
+                countdown.style.display = 'none';
+                clearInterval(cdInterval);
             }
         }, 1000);
-        playTone(440, 0.15, "sine", 0.15);
 
         // --- メインアップデートループ ---
+        const clock = new THREE.Clock();
+
+        function dropCoins() {
+            let countToDrop = Math.min(coinCount, 3);
+            coinCount -= countToDrop;
+            coinVal.innerText = coinCount;
+            for(let i=0; i<countToDrop; i++) {
+                const dCoin = new THREE.Mesh(coinGeo, coinMat);
+                dCoin.position.copy(player.position).add(new THREE.Vector3((Math.random()-0.5)*15, 1, (Math.random()-0.5)*15));
+                scene.add(dCoin);
+                coins.push(dCoin);
+                setTimeout(() => {
+                    scene.remove(dCoin);
+                    const idx = coins.indexOf(dCoin);
+                    if(idx > -1) coins.splice(idx, 1);
+                }, 10000);
+            }
+        }
+
+        function triggerThunder() {
+            playTone(1000, 0.5, "triangle");
+            scene.background = new THREE.Color(0xffffff);
+            setTimeout(() => { scene.background = new THREE.Color(0x1a1a24); }, 150);
+            npcs.forEach(npc => {
+                if(npc.isMega <= 0) {
+                    npc.speed *= 0.5;
+                    npc.mesh.scale.set(0.5, 0.25, 0.5);
+                    setTimeout(() => {
+                        npc.speed = 0.9 + Math.random()*0.2;
+                        npc.mesh.scale.set(1, 1, 1);
+                    }, 5000);
+                }
+            });
+        }
+
+        function activateMega() {
+            playTone(330, 0.2);
+            player.scale.set(3, 3, 3);
+            maxSpeed = 2.4;
+            setTimeout(() => {
+                player.scale.set(1, 1, 1);
+                maxSpeed = 1.6;
+            }, 6000);
+        }
+
+        function useNpcItem(npc) {
+            npc.heldItem = null;
+            if (Math.random() < 0.4) {
+                npc.speed *= 1.5;
+                setTimeout(() => { npc.speed = 0.9 + Math.random()*0.2; }, 2000);
+            } else {
+                npc.isMega = 180;
+                npc.mesh.scale.set(2.5, 2.5, 2.5);
+                setTimeout(() => { npc.mesh.scale.set(1, 1, 1); }, 3000);
+            }
+        }
+
+        function useItem() {
+            if (!currentItem) return;
+            soundUseItem();
+            if (currentItem.name === "ダッシュキノコ") {
+                itemMushroomTimer = 90;
+                currentItem = null;
+            } else if (currentItem.name === "トリプルキノコ") {
+                itemMushroomTimer = 90;
+                itemAmmo--;
+                itemAmmoVal.innerText = itemAmmo;
+                if(itemAmmo <= 0) { currentItem = null; itemAmmoUi.style.display = "none"; }
+            } else if (currentItem.name === "金ピカキノコ") {
+                itemMushroomTimer = 90;
+                itemGoldenTimer--;
+                if(itemGoldenTimer <= 0) { currentItem = null; }
+            } else if (currentItem.name === "テレサ") {
+                itemBooTimer = 240;
+                currentItem = null;
+                coins.forEach(c => {
+                    let d = player.position.distanceTo(c.position);
+                    if(d < 60) {
+                        createVectorRing(c.position);
+                        scene.remove(c);
+                        const idx = coins.indexOf(c);
+                        if(idx > -1) coins.splice(idx, 1);
+                        coinCount = Math.min(coinCount + 1, 10);
+                        coinVal.innerText = coinCount;
+                        soundCoin();
+                    }
+                });
+            } else if (currentItem.name === "サンダー") {
+                triggerThunder();
+                currentItem = null;
+            } else if (currentItem.name === "メガキノコ") {
+                activateMega();
+                currentItem = null;
+            }
+
+            if(!currentItem) {
+                playerItemImg.style.display = "none";
+            }
+        }
+
+        function createVectorRing(pos) {
+            const ringGeo = new THREE.RingGeometry(0.1, 2, 8);
+            const ringMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, side: THREE.DoubleSide, transparent: true, opacity: 0.8 });
+            const ring = new THREE.Mesh(ringGeo, ringMat);
+            ring.position.copy(pos).add(new THREE.Vector3(0, 0.2, 0));
+            ring.rotation.x = Math.PI/2;
+            scene.add(ring);
+            let s = 1;
+            const animateRing = () => {
+                s += 0.2; ring.scale.set(s, s, s); ringMat.opacity -= 0.05;
+                if(ringMat.opacity > 0) { requestAnimationFrame(animateRing); }
+                else { scene.remove(ring); }
+            };
+            animateRing();
+        }
+
         function update() {
             requestAnimationFrame(update);
-            totalFrame++;
-            if (canDrive && !isFinished) lapFrame++;
+            const delta = clock.getDelta();
 
-            // 各種バフ・デバフのタイマー更新
+            // 警告灯の明滅
+            alarmLight.intensity = 1.5 + Math.sin(Date.now() * 0.005) * 1.0;
+
+            // 歯車の回転
+            gears.forEach((g, idx) => { g.rotation.z += (idx % 2 === 0 ? 0.02 : -0.02); });
+
+            if (!gameActive) {
+                renderer.render(scene, camera);
+                return;
+            }
+
+            // --- プレイヤー状態異常タイマー ---
+            if (isSquishedTimer > 0) { isSquishedTimer--; player.scale.set(1.5, 0.1, 1.5); }
+            else { player.scale.set(1, 1, 1); }
             if (playerHitInvincibleTimer > 0) playerHitInvincibleTimer--;
-            if (isSquishedTimer > 0) isSquishedTimer--;
-            if (itemBooTimer > 0) {
-                itemBooTimer--;
-                body.material.opacity = 0.4;
-                body.material.transparent = true;
-            } else {
-                body.material.opacity = 1.0;
-                body.material.transparent = false;
-            }
-
-            if (itemStarTimer > 0) {
-                itemStarTimer--;
-                body.material.color.setHex(Math.sin(totalFrame*0.5)*0xffffff);
-            } else {
-                body.material.color.setHex(0x3388ff);
-            }
+            if (itemMushroomTimer > 0) itemMushroomTimer--;
+            if (itemBooTimer > 0) itemBooTimer--;
 
             // --- プレイヤー物理挙動 ---
-            if (canDrive && isSquishedTimer <= 0) {
-                let speedLim = maxNormalSpeed;
-                if (turboTimer > 0) { speedLim = 2.4; turboTimer--; }
-                else if (itemStarTimer > 0) { speedLim = 2.2; }
-
-                if (keys.ArrowUp) {
-                    speed += acceleration;
-                    if (speed > speedLim) speed -= friction * 2;
-                } else if (keys.ArrowDown) {
-                    speed -= deceleration;
-                    if (speed < -speedLim/2) speed = -speedLim/2;
+            if (isSquishedTimer <= 0) {
+                if (keys['ArrowUp'] || keys['KeyW']) {
+                    let effMax = maxSpeed * (1 + coinCount * 0.03);
+                    if (itemMushroomTimer > 0) effMax *= 1.6;
+                    if (speed < effMax) speed += accel;
+                } else if (keys['ArrowDown'] || keys['KeyS']) {
+                    if (speed > -maxSpeed * 0.5) speed -= accel;
                 } else {
-                    if (speed > 0) speed -= friction;
-                    else if (speed < 0) speed += friction;
+                    speed *= drag;
+                    if (Math.abs(speed) < 0.01) speed = 0;
                 }
 
-                let turnSpeed = 0.04;
-                if (Math.abs(speed) > 0.1) {
-                    let dirFactor = speed > 0 ? 1 : -1;
-                    if (isDrifting) {
-                        if (driftDirection === -1) {
-                            yaw += 0.052 * dirFactor;
-                            if (keys.ArrowRight) yaw -= 0.015;
-                        } else {
-                            yaw -= 0.052 * dirFactor;
-                            if (keys.ArrowLeft) yaw += 0.015;
-                        }
-                    } else {
-                        if (keys.ArrowLeft) yaw += turnSpeed * dirFactor;
-                        if (keys.ArrowRight) yaw -= turnSpeed * dirFactor;
-                    }
+                if (keys['ArrowLeft'] || keys['KeyA']) {
+                    angle += 0.04 * (speed > 0 ? 1 : -0.5);
                 }
-
-                if (keys.KeyShift && (keys.ArrowLeft || keys.ArrowRight) && Math.abs(speed) > 0.8 && !isDrifting && !isJumping) {
-                    isDrifting = true;
-                    driftDirection = keys.ArrowLeft ? -1 : 1;
-                    driftTimer = 0;
-                    mtSparkLevel = 0;
-                    isJumping = true;
-                    jumpVelocity = 0.6;
-                }
-
-                if (isDrifting) {
-                    if (!keys.KeyShift) {
-                        isDrifting = false;
-                        if (mtSparkLevel > 0) {
-                            soundDriftRelease();
-                            turboTimer = mtSparkLevel === 1 ? 40 : (mtSparkLevel === 2 ? 80 : 130);
-                            let turboTxt = mtSparkLevel === 1 ? "🔥 MINI TURBO! 🔥" : (mtSparkLevel === 2 ? "💥 SUPER MINI TURBO! 💥" : "⚡ ULTRA MINI TURBO!! ⚡");
-                            let turboTxtColor = mtSparkLevel === 1 ? "#00e5ff" : (mtSparkLevel === 2 ? "#ffd700" : "#e040fb");
-                            let ui = document.getElementById("turbo-ui");
-                            ui.innerText = turboTxt; ui.style.color = turboTxtColor;
-                            setTimeout(() => { ui.innerText = ""; }, 1000);
-                        }
-                        mtSparkLevel = 0;
-                    } else {
-                        driftTimer++;
-                        if (driftTimer % 3 === 0) soundDriftCharge();
-                        let sparkColor = 0xffffff;
-                        if (driftTimer > 180) { mtSparkLevel = 3; sparkColor = 0xe040fb; }
-                        else if (driftTimer > 100) { mtSparkLevel = 2; sparkColor = 0xffd700; }
-                        else if (driftTimer > 40) { mtSparkLevel = 1; sparkColor = 0x00e5ff; }
-
-                        if (mtSparkLevel > 0) {
-                            let backPos = cartGroup.position.clone().add(new THREE.Vector3(Math.sin(yaw)*2, 0, Math.cos(yaw)*2));
-                            createSmoke(backPos, sparkColor, 0.6);
-                        }
-                    }
-                }
-
-                let velocityX = -Math.sin(yaw) * speed;
-                let velocityZ = -Math.cos(yaw) * speed;
-                cartGroup.position.x += velocityX;
-                cartGroup.position.z += velocityZ;
-
-                if (isJumping) {
-                    jumpY += jumpVelocity;
-                    jumpVelocity -= 0.05;
-                    if (jumpY <= 0) {
-                        jumpY = 0;
-                        isJumping = false;
-                        jumpVelocity = 0;
-                    }
-                }
-                cartGroup.position.y = jumpY;
-
-                if (totalFrame % 5 === 0 && Math.abs(speed) > 0.2) {
-                    let backPos = cartGroup.position.clone().add(new THREE.Vector3(Math.sin(yaw)*2.2, 0.4, Math.cos(yaw)*2.2));
-                    createSmoke(backPos, 0xaaaaaa, 0.3);
+                if (keys['ArrowRight'] || keys['KeyD']) {
+                    angle -= 0.04 * (speed > 0 ? 1 : -0.5);
                 }
             } else {
-                speed *= 0.9;
-                cartGroup.position.x += -Math.sin(yaw) * speed;
-                cartGroup.position.z += -Math.cos(yaw) * speed;
+                speed *= drag;
             }
 
-            cartGroup.rotation.y = yaw;
-            if (isDrifting) {
-                body.rotation.z = -driftDirection * 0.18;
-                body.rotation.y = -driftDirection * 0.15;
-            } else {
-                body.rotation.z = 0;
-                body.rotation.y = 0;
+            // 泥沼減速判定
+            let inMud = false;
+            mudPools.forEach(mud => {
+                let d = player.position.distanceTo(mud.position);
+                if (d < 12) { inMud = true; }
+            });
+            if (inMud && itemMushroomTimer <= 0) { speed *= 0.85; }
+
+            // アイテム使用
+            if (keys['Space']) {
+                keys['Space'] = false; // 連打防止
+                useItem();
             }
 
-            let wallCollided = false;
-            let closestNodeIdx = Math.floor(getClosestProgress(cartGroup.position) * NODE_COUNT) % NODE_COUNT;
-            let trackCenter = npcPathNodes[closestNodeIdx];
-            let distToCenter = cartGroup.position.distanceTo(trackCenter);
-            if (distToCenter > roadWidth / 2 - 1.5) {
-                wallCollided = true;
-                let pushDir = new THREE.Vector3().subVectors(cartGroup.position, trackCenter).setY(0).normalize();
-                cartGroup.position.add(pushDir.multiplyScalar(roadWidth / 2 - 1.5 - distToCenter));
+            // 移動計算
+            player.position.x += Math.sin(angle) * speed;
+            player.position.z += Math.cos(angle) * speed;
+            player.rotation.y = angle;
 
-                if (isDrifting && Math.abs(speed) > 1.0) {
-                    isDrifting = false;
-                    speed = 0.5;
-                    turboTimer = 55;
-                    yaw += Math.PI * 0.8 * driftDirection;
-                    soundDriftRelease();
-                    let ui = document.getElementById("turbo-ui");
-                    ui.innerText = "💥 WALL KICK!! 💥"; ui.style.color = "#e040fb";
-                    setTimeout(() => { ui.innerText = ""; }, 1000);
-                } else {
-                    speed = -0.4;
+            speedVal.innerText = Math.round(Math.abs(speed) * 80);
+
+            // --- 巨大鉄球の移動 ---
+            ballProgress += 0.003;
+            let ballSegment = Math.floor(ballProgress * NODE_COUNT);
+            let ballPercent = (ballProgress * NODE_COUNT) % 1;
+            let bStart = npcPathNodes[ballSegment % NODE_COUNT];
+            let bEnd = npcPathNodes[(ballSegment + 1) % NODE_COUNT];
+            ironBall.position.set(bStart.x + (bEnd.x - bStart.x)*ballPercent, 4, bStart.z + (bEnd.z - bStart.z)*ballPercent);
+            ironBall.rotation.y += 0.05;
+
+            // 鉄球との衝突
+            if (player.position.distanceTo(ironBall.position) < 5.5 && playerHitInvincibleTimer <= 0 && itemMushroomTimer <= 0) {
+                isSquishedTimer = 90; speed = 0;
+                playerHitInvincibleTimer = 180;
+                soundHit();
+                dropCoins();
+                turboText.innerText = "💥 巨大鉄球に押しつぶされた！！ 💥"; turboText.style.color = "#ff3333";
+                setTimeout(() => { turboText.innerText = ""; }, 2500);
+            }
+
+            // --- プレス機の稼働 ---
+            crushers.forEach(crusher => {
+                crusher.cycle += delta * 4;
+                let y = 15 + Math.sin(crusher.cycle) * 11;
+                if(y < 1.0) { y = 0.5; crusher.state = 'down'; } else { crusher.state = 'up'; }
+                crusher.mesh.position.y = y;
+
+                // プレス衝突判定
+                if (y < 2.0 && player.position.distanceTo(crusher.mesh.position) < 6.5 && isSquishedTimer <= 0) {
+                    isSquishedTimer = 100; speed = 0;
                     soundHit();
-                }
-            }
-
-            // --- アイテムボックス取得判定 ---
-            itemBoxes.forEach(box => {
-                if (!box.active) {
-                    box.respawnTimer--;
-                    if (box.respawnTimer <= 0) {
-                        box.active = true;
-                        box.mesh.visible = true;
-                    }
-                    return;
-                }
-                box.mesh.rotation.x += 0.02; box.mesh.rotation.y += 0.03;
-                let dist = cartGroup.position.distanceTo(box.mesh.position);
-                if (dist < 4.0) {
-                    box.active = false;
-                    box.mesh.visible = false;
-                    box.respawnTimer = 300;
-                    soundItemGet();
-                    if (!currentItem && itemRouletteTimer === 0) {
-                        itemRouletteTimer = 90;
-                    }
+                    dropCoins();
+                    turboText.innerText = "💥 プレス機に潰された！！ 💥"; turboText.style.color = "#ff3333";
+                    setTimeout(() => { turboText.innerText = ""; }, 2500);
                 }
             });
 
-            // プレイヤーアイテムルーレット (🚀を完全除外したリストで演出)
-            if (itemRouletteTimer > 0) {
-                itemRouletteTimer--;
-                let rouletteIcons = ['🍄', '👑', '⭐', '🍌', '🐢', '👻'];
-                let randIcon = rouletteIcons[Math.floor(Math.random() * rouletteIcons.length)];
-                document.getElementById("item-slot").innerText = randIcon;
-                if (itemRouletteTimer === 0) {
-                    currentItem = lotteryItem(rank);
-                    document.getElementById("item-slot").innerText = itemIcon(currentItem);
-                }
-            }
-
-            // --- コイン取得判定 ---
+            // --- コイン回収 ---
             coins.forEach(coin => {
-                if (!coin.active) {
-                    if (coin.respawnTimer > 0) {
-                        coin.respawnTimer--;
-                        if (coin.respawnTimer <= 0 && coin.index !== -1) {
-                            coin.active = true;
-                            coin.mesh.visible = true;
+                coin.rotation.y += 0.05;
+                if (player.position.distanceTo(coin.position) < 3.5) {
+                    scene.remove(coin);
+                    const idx = coins.indexOf(coin);
+                    if (idx > -1) coins.splice(idx, 1);
+                    coinCount = Math.min(coinCount + 1, 10);
+                    coinVal.innerText = coinCount;
+                    soundCoin();
+                }
+            });
+
+            // --- アイテムボックス回収 ---
+            itemBoxes.forEach(box => {
+                if (box.respawnTimer > 0) {
+                    box.respawnTimer--;
+                    if (box.respawnTimer === 0) { scene.add(box.mesh); }
+                } else {
+                    box.mesh.rotation.x += 0.02;
+                    box.mesh.rotation.y += 0.02;
+                    if (player.position.distanceTo(box.mesh.position) < 3.5) {
+                        scene.remove(box.mesh);
+                        box.respawnTimer = 300;
+                        soundItem();
+                        if (!currentItem) {
+                            currentItem = ITEM_TYPES[Math.floor(Math.random() * ITEM_TYPES.length)];
+                            playerItemImg.src = currentItem.img;
+                            playerItemImg.style.display = "block";
+                            playerItemImg.style.border = `4px solid ${currentItem.color}`;
+                            if(currentItem.name === "トリプルキノコ") {
+                                itemAmmo = 3; itemAmmoVal.innerText = itemAmmo; itemAmmoUi.style.display = "block";
+                            } else if(currentItem.name === "金ピカキノコ") {
+                                itemGoldenTimer = 300;
+                            }
                         }
                     }
-                    return;
-                }
-                coin.mesh.rotation.z += 0.05;
-                let dist = cartGroup.position.distanceTo(coin.mesh.position);
-                if (dist < 3.5) {
-                    coin.active = false;
-                    coin.mesh.visible = false;
-                    coin.respawnTimer = 400;
-                    coinsCollected++;
-                    soundCoin();
-                    document.getElementById("coin-display").innerText = "COINS: " + coinsCollected;
                 }
             });
 
-            // --- プレス機障害物 ---
-            presses.forEach(p => {
-                let height = p.baseHeight + Math.sin(totalFrame * 0.08 + p.offset) * 12;
-                p.mesh.position.y = height;
-
-                if (height < 6.5) {
-                    let d = cartGroup.position.distanceTo(new THREE.Vector3(p.mesh.position.x, 0, p.mesh.position.z));
-                    if (d < 5.5 && isSquishedTimer <= 0 && itemStarTimer <= 0 && itemBooTimer <= 0 && playerHitInvincibleTimer <= 0) {
-                        isSquishedTimer = 120;
-                        speed = 0;
-                        itemMushroomTimer = 0;
-                        itemGoldenTimer = 0;
-                        playerHitInvincibleTimer = 180;
-                        soundHit();
-                        dropCoins();
-                        let turboText = document.getElementById("turbo-ui");
-                        turboText.innerText = "💥 プレス機にペシャンコにされた！！コインを失った！ 💥"; turboText.style.color = "#ff3333";
-                        setTimeout(() => { turboText.innerText = ""; }, 2500);
+            // --- 進捗・ラップ判定 ---
+            let nextNodeIdx = (currentProgressNode + 1) % NODE_COUNT;
+            let distToNext = player.position.distanceTo(npcPathNodes[nextNodeIdx]);
+            if (distToNext < 25) {
+                currentProgressNode = nextNodeIdx;
+                if (currentProgressNode === 0) {
+                    playerLap++;
+                    lapVal.innerText = playerLap;
+                    playTone(523.25, 0.1); setTimeout(()=>playTone(659.25, 0.2), 100);
+                    if (playerLap > 3) {
+                        gameActive = false;
+                        showFinalResults();
                     }
                 }
-            });
+            }
 
-            // --- バナナ障害物の判定 ---
-            hazards.forEach((h, hIdx) => {
-                let dist = cartGroup.position.distanceTo(h.mesh.position);
-                if (dist < 3.5 && itemBooTimer <= 0) {
-                    if (itemStarTimer > 0) {
-                        hazardGroup.remove(h.mesh);
-                        hazards.splice(hIdx, 1);
-                    } else if (isSquishedTimer <= 0 && playerHitInvincibleTimer <= 0) {
-                        isSquishedTimer = 80;
-                        speed = 0;
-                        playerHitInvincibleTimer = 140;
-                        soundHit();
-                        dropCoins();
-                        hazardGroup.remove(h.mesh);
-                        hazards.splice(hIdx, 1);
-                        let turboText = document.getElementById("turbo-ui");
-                        turboText.innerText = "🍌 バナナを踏んで滑った！！ 🍌"; turboText.style.color = "#ffdd33";
-                        setTimeout(() => { turboText.innerText = ""; }, 2000);
-                    }
-                }
-            });
-
-            // --- こうらの判定 ---
-            shells.forEach((sh, shIdx) => {
-                sh.mesh.position.addScaledVector(sh.dir, 1.8);
-                let cNode = npcPathNodes[Math.floor(getClosestProgress(sh.mesh.position)*NODE_COUNT)%NODE_COUNT];
-                if (sh.mesh.position.distanceTo(cNode) > roadWidth/2 - 1.0) {
-                    sh.dir.negate();
-                    soundHit();
-                }
-                let dist = cartGroup.position.distanceTo(sh.mesh.position);
-                if (dist < 3.8 && itemBooTimer <= 0) {
-                    if (itemStarTimer > 0) {
-                        hazardGroup.remove(sh.mesh);
-                        shells.splice(shIdx, 1);
-                    } else if (isSquishedTimer <= 0 && playerHitInvincibleTimer <= 0) {
-                        isSquishedTimer = 90; speed = 0;
-                        playerHitInvincibleTimer = 150;
-                        soundHit();
-                        dropCoins();
-                        hazardGroup.remove(sh.mesh);
-                        shells.splice(shIdx, 1);
-                        let turboText = document.getElementById("turbo-ui");
-                        turboText.innerText = "🐢 こうらが激突した！！ 🐢"; turboText.style.color = "#ff3333";
-                        setTimeout(() => { turboText.innerText = ""; }, 2000);
-                    }
-                }
-            });
-
-            // --- ライバル(NPC)の更新 ---
+            // --- NPCカートの更新 ---
             npcs.forEach((npc, index) => {
-                let nSpeed = npc.baseSpeed * (0.95 + Math.sin(totalFrame*0.01 + index)*0.05);
-                if (npc.isSquished > 0) {
-                    npc.isSquished--;
-                    nSpeed = 0;
-                }
-
-                let distToPlayer = npc.mesh.position.distanceTo(cartGroup.position);
-                if (distToPlayer < 6.0) {
-                    if (itemStarTimer > 0) {
-                        npc.isSquished = 100;
-                        npc.speed = 0;
-                        playTone(200, 0.4, "sawtooth", 0.2);
-                    } else if (playerHitInvincibleTimer <= 0 && npc.isMega > 0 && itemBooTimer <= 0 && isSquishedTimer <= 0) {
-                        isSquishedTimer = 60; speed = 0; itemMushroomTimer = 0; itemGoldenTimer = 0;
-                        playerHitInvincibleTimer = 180; 
-                        soundHit(); 
-                        dropCoins();
-                        let turboText = document.getElementById("turbo-ui");
-                        turboText.innerText = "💥 スター状態のライバルにハネ飛ばされた！！コインを失った！ 💥"; turboText.style.color = "#ff3333";
-                        setTimeout(() => { turboText.innerText = ""; }, 2500);
-                    }
-                }
-
+                let nSpeed = (0.001 * npc.speed);
+                if (npc.isMega > 0) nSpeed *= 1.5;
                 npc.progress += nSpeed;
-                if (npc.progress >= 1) {
-                    npc.progress -= 1;
-                    npc.lap++;
-                }
-
-                if (!npc.heldItem && Math.random() < 0.001) {
-                    let npcItems = ['mushroom', 'banana', 'star'];
-                    npc.heldItem = npcItems[Math.floor(Math.random()*npcItems.length)];
-                    npc.itemUseTimer = 100 + Math.random()*200;
-                }
-                if (npc.heldItem) {
-                    npc.itemUseTimer--;
-                    if (npc.itemUseTimer <= 0) { useNpcItem(npc); }
-                }
+                if (npc.progress >= 1) { npc.progress -= 1; npc.lap++; }
 
                 let p = Math.max(0, npc.progress);
                 let segment = Math.floor(p * NODE_COUNT);
                 let segmentPercent = (p * NODE_COUNT) % 1;
                 let startNode = npcPathNodes[segment % NODE_COUNT];
                 let endNode = npcPathNodes[(segment + 1) % NODE_COUNT];
-                
                 npc.mesh.position.set(
                     startNode.x + (endNode.x - startNode.x) * segmentPercent,
-                    0,
+                    0.75,
                     startNode.z + (endNode.z - startNode.z) * segmentPercent + ((index % 2 === 0) ? 5 : -5)
                 );
 
-                if (npc.isMega > 0) {
-                    npc.isMega--;
-                    npc.mesh.scale.set(1.8, 1.8, 1.8);
-                } else {
-                    npc.mesh.scale.set(1, 1, 1);
-                }
-
-                let dir = new THREE.Vector3().subVectors(endNode, startNode).normalize();
-                npc.mesh.lookAt(npc.mesh.position.clone().add(dir));
-            });
-
-            // --- プレイヤー進行度・周回タイム計算 ---
-            playerProgress = getClosestProgress(cartGroup.position);
-            let node0Dist = cartGroup.position.distanceTo(npcPathNodes[0]);
-            if (node0Dist < 18.0) {
-                if (playerProgress > 0.0 && playerProgress < 0.1 && totalFrame > 500) {
-                    if (lapTimes.length < playerLap) {
-                        let sec = (lapFrame / 60).toFixed(2);
-                        lapTimes.push(sec);
-                        lapFrame = 0;
-                        playerLap++;
-                        soundRankUp();
-
-                        if (playerLap > 3) {
-                            isFinished = true;
-                            canDrive = false;
-                            speed = 0;
-                            document.getElementById("lap-display").innerText = "GOAL!!";
-                            showFinalResults();
-                        } else {
-                            document.getElementById("lap-display").innerText = "LAP: " + playerLap + " / 3";
-                            let lapStr = "";
-                            lapTimes.forEach((t, i) => { lapStr += `Lap ${i+1}: ${t}s<br>`; });
-                            document.getElementById("lap-times").innerHTML = lapStr;
-                        }
+                // プレイヤーとNPCの衝突
+                if (player.position.distanceTo(npc.mesh.position) < 4.5 && playerHitInvincibleTimer <= 0) {
+                    if (npc.isMega > 0 && itemMushroomTimer <= 0) {
+                        isSquishedTimer = 60; speed = 0;
+                        playerHitInvincibleTimer = 180;
+                        soundHit();
+                        dropCoins();
+                        turboText.innerText = "💥 スター状態のライバルにハネ飛ばされた！！ 💥"; turboText.style.color = "#ff3333";
+                        setTimeout(() => { turboText.innerText = ""; }, 2500);
                     }
                 }
-            }
-
-            // 逆走警告
-            let prevNode = npcPathNodes[(closestNodeIdx - 1 + NODE_COUNT) % NODE_COUNT];
-            let nextNode = npcPathNodes[(closestNodeIdx + 1) % NODE_COUNT];
-            let vNormal = new THREE.Vector3().subVectors(nextNode, prevNode).normalize();
-            let vPlayer = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw)).normalize();
-            let dotDir = vNormal.dot(vPlayer);
-            if (dotDir < -0.4 && speed > 0.3) {
-                let ui = document.getElementById("turbo-ui");
-                ui.innerText = "⚠️ 逆走しています！！ ⚠️"; ui.style.color = "#ff3333";
-            } else if (document.getElementById("turbo-ui").innerText.includes("逆走")) {
-                document.getElementById("turbo-ui").innerText = "";
-            }
-
-            // --- 順位（RANK）計算 ---
-            let rankArray = [];
-            npcs.forEach(npc => {
-                rankArray.push({ id: npc.id, score: npc.lap * 10 + npc.progress, isPlayer: false });
-            });
-            rankArray.push({ id: "プレイヤー", score: playerLap * 10 + playerProgress, isPlayer: true });
-            rankArray.sort((a, b) => b.score - a.score);
-            let prevRank = rank;
-            rank = rankArray.findIndex(r => r.isPlayer) + 1;
-
-            let rankStr = "4th";
-            if (rank === 1) rankStr = "1st";
-            else if (rank === 2) rankStr = "2nd";
-            else if (rank === 3) rankStr = "3rd";
-            document.getElementById("rank-display").innerText = "RANK: " + rankStr;
-
-            if (rank < prevRank) {
-                soundRankUp();
-            }
-
-            // --- パーティクルの更新 ---
-            particles.forEach((p, index) => {
-                p.mesh.position.add(p.vel);
-                p.life--;
-                p.mesh.material.opacity = p.life / p.maxLife;
-                if (p.life <= 0) {
-                    particleGroup.remove(p.mesh);
-                    particles.splice(index, 1);
-                }
             });
 
-            let speedKmh = (Math.abs(speed) * 110).toFixed(1);
-            document.getElementById("speed-display").innerText = "SPEED: " + speedKmh + " km/h";
-
-            // --- カメラ追従 ---
-            let backCamOffset = new THREE.Vector3(Math.sin(yaw)*16, 6, Math.cos(yaw)*16);
-            camera.position.copy(cartGroup.position).add(backCamOffset);
-            camera.lookAt(cartGroup.position.clone().add(new THREE.Vector3(0, 1.5, 0)));
-
-            // --- バックミラーカメラ更新 ---
-            let frontCamOffset = new THREE.Vector3(-Math.sin(yaw)*18, 5, -Math.cos(yaw)*18);
-            mirrorCamera.position.copy(cartGroup.position).add(frontCamOffset);
-            mirrorCamera.lookAt(cartGroup.position);
+            // --- カメラワーク ---
+            let targetCamPos = new THREE.Vector3(
+                player.position.x - Math.sin(angle) * 25,
+                player.position.y + 11,
+                player.position.z - Math.cos(angle) * 25
+            );
+            camera.position.lerp(targetCamPos, 0.1);
+            camera.lookAt(player.position.clone().add(new THREE.Vector3(0, 2, 0)));
 
             renderer.render(scene, camera);
-            mirrorRenderer.render(scene, mirrorCamera);
         }
 
         function showFinalResults() {
-            let totalTime = lapTimes.reduce((a, b) => parseFloat(a) + parseFloat(b), 0).toFixed(2);
+            let totalTime = (performance.now() / 1000).toFixed(2);
+            let rank = 1;
+            npcs.forEach(npc => { if(npc.lap > 3 || (npc.lap === 3 && npc.progress > currentProgressNode/NODE_COUNT)) rank++; });
             let resultHtml = `
                 <div style="color: #fff; font-size: 32px; text-shadow: 2px 2px 5px #000; text-align: center;">
                     🏁 FINISH! 🏁<br>
                     <span style="color: #ffd700; font-size: 40px;">RANK: ${rank === 1 ? '1st' : rank === 2 ? '2nd' : rank === 3 ? '3rd' : '4th'}</span><br>
                     Total Time: ${totalTime}s<br>
-                    <span style="font-size: 16px; color: #888;">リロード(F5キー)でもう一度遊べます</span>
+                    <span style="font-size: 16px; color: #888;">Ctrl + Rキーでもう一度遊べます</span>
                 </div>
             `;
             let div = document.createElement('div');
@@ -1173,13 +728,15 @@
             document.body.appendChild(div);
         }
 
-        window.addEventListener('resize', () => {
+        update();
+
+        // 画面リサイズ対応
+        window.addEventListener('resize', onWindowResize, false);
+        function onWindowResize() {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
-        });
-
-        requestAnimationFrame(update);
+        }
     </script>
 </body>
 </html>
