@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>キノピオファクトリー：プロモード完全バグ修正統合版</title>
+    <title>キノピオファクトリー：完全バグ修正統合版</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
         #ui-container {
@@ -28,7 +28,6 @@
         .item-img-ui { width: 64px; height: 64px; display: none; }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 </head>
 <body>
     <div id="ui-container">
@@ -166,7 +165,6 @@
 
         // --- コース壁・ガードレール ---
         const wallMaterial = new THREE.MeshStandardMaterial({ color: 0x3a3a44, metalness: 0.5, roughness: 0.5 });
-        const wallGeometryList = [];
 
         for (let i = 0; i < NODE_COUNT; i++) {
             let idx = i;
@@ -231,37 +229,32 @@
         const crusherGeo = new THREE.BoxGeometry(10, 15, 10);
         const crusherMat = new THREE.MeshStandardMaterial({ color: 0x22222a, metalness: 0.9, roughness: 0.1 });
 
-        // コース上に要素を等間隔で配置
         for (let i = 0; i < NODE_COUNT; i++) {
             let curr = npcPathNodes[i];
             let next = npcPathNodes[(i + 1) % NODE_COUNT];
             let mid = new THREE.Vector3().addVectors(curr, next).multiplyScalar(0.5);
 
-            // コインの配置 (3ノードおき)
             if (i % 3 === 1) {
                 const coin = new THREE.Mesh(coinGeo, coinMat);
                 coin.position.copy(mid).add(new THREE.Vector3(0, 1.5, 0));
                 scene.add(coin);
                 coins.push(coin);
             }
-            // アイテムボックスの配置 (5ノードおき)
             if (i % 5 === 2) {
                 const box = new THREE.Mesh(itemBoxGeo, itemBoxMat);
                 box.position.copy(mid).add(new THREE.Vector3(0, 2, 0));
                 scene.add(box);
                 itemBoxes.push({ mesh: box, respawnTimer: 0 });
             }
-            // 泥沼 (特定の後半暗いエリア)
             if (i === 15 || i === 18) {
                 const mud = new THREE.Mesh(mudGeo, mudMat);
                 mud.position.copy(mid).add(new THREE.Vector3(0, 0.05, 0));
                 scene.add(mud);
                 mudPools.push(mud);
             }
-            // プレス機 (特定の危険エリア)
             if (i === 12 || i === 22) {
                 const crusher = new THREE.Mesh(crusherGeo, crusherMat);
-                crusher.position.copy(mid).add(new THREE.Vector3(0, 15, 0)); // 初期状態は上空
+                crusher.position.copy(mid).add(new THREE.Vector3(0, 15, 0));
                 scene.add(crusher);
                 crushers.push({ mesh: crusher, cycle: Math.random() * Math.PI, state: 'up' });
             }
@@ -275,19 +268,16 @@
         player.castShadow = true;
         scene.add(player);
 
-        // プレイヤーの物理ステータス
         let speed = 0;
         let maxSpeed = 1.6;
         const accel = 0.02;
-        const decel = 0.015;
         const drag = 0.985;
-        let angle = Math.PI; // スタート時逆方向を向かないように調整
+        let angle = Math.PI;
 
         const keys = {};
         window.addEventListener('keydown', e => { keys[e.code] = true; });
         window.addEventListener('keyup', e => { keys[e.code] = false; });
 
-        // ゲーム状態変数
         let coinCount = 0;
         let playerLap = 1;
         let currentProgressNode = 0;
@@ -301,7 +291,6 @@
         let countdownVal = 3;
         let gameActive = false;
 
-        // UI要素
         const speedVal = document.getElementById('speed-val');
         const coinVal = document.getElementById('coin-val');
         const lapVal = document.getElementById('lap-val');
@@ -311,7 +300,6 @@
         const itemAmmoUi = document.getElementById('item-ammo-ui');
         const itemAmmoVal = document.getElementById('item-ammo-val');
 
-        // 音声効果 (簡易シンセ)
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         function playTone(freq, duration, type="sine") {
             try {
@@ -332,7 +320,6 @@
         function soundUseItem() { playTone(587.33, 0.15, "square"); }
         function soundHit() { playTone(150, 0.4, "sawtooth"); }
 
-        // NPCカートの設定 (3台追加して競合を激しくする)
         const npcColors = [0x3333ff, 0x33ff33, 0xffff33];
         const npcs = npcColors.map((color, index) => {
             const mat = new THREE.MeshStandardMaterial({ color: color, metalness: 0.5, roughness: 0.5 });
@@ -350,7 +337,6 @@
             };
         });
 
-        // 障害物の巨大鉄球（動き回るギミック）
         const ballGeo = new THREE.SphereGeometry(4, 16, 16);
         const ballMat = new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.9, roughness: 0.1 });
         const ironBall = new THREE.Mesh(ballGeo, ballMat);
@@ -358,7 +344,6 @@
         scene.add(ironBall);
         let ballProgress = 0.5;
 
-        // アイテム定義
         const ITEM_TYPES = [
             { name: "ダッシュキノコ", img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/active-items/mach-bike.png", color: 0xff0000 },
             { name: "トリプルキノコ", img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/active-items/mach-bike.png", color: 0xff3333 },
@@ -368,7 +353,6 @@
             { name: "メガキノコ", img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/active-items/mach-bike.png", color: 0xff8800 }
         ];
 
-        // カウントダウン処理
         const cdInterval = setInterval(() => {
             countdownVal--;
             if (countdownVal > 0) {
@@ -384,7 +368,6 @@
             }
         }, 1000);
 
-        // --- メインアップデートループ ---
         const clock = new THREE.Clock();
 
         function dropCoins() {
@@ -430,18 +413,6 @@
             }, 6000);
         }
 
-        function useNpcItem(npc) {
-            npc.heldItem = null;
-            if (Math.random() < 0.4) {
-                npc.speed *= 1.5;
-                setTimeout(() => { npc.speed = 0.9 + Math.random()*0.2; }, 2000);
-            } else {
-                npc.isMega = 180;
-                npc.mesh.scale.set(2.5, 2.5, 2.5);
-                setTimeout(() => { npc.mesh.scale.set(1, 1, 1); }, 3000);
-            }
-        }
-
         function useItem() {
             if (!currentItem) return;
             soundUseItem();
@@ -463,7 +434,6 @@
                 coins.forEach(c => {
                     let d = player.position.distanceTo(c.position);
                     if(d < 60) {
-                        createVectorRing(c.position);
                         scene.remove(c);
                         const idx = coins.indexOf(c);
                         if(idx > -1) coins.splice(idx, 1);
@@ -485,30 +455,11 @@
             }
         }
 
-        function createVectorRing(pos) {
-            const ringGeo = new THREE.RingGeometry(0.1, 2, 8);
-            const ringMat = new THREE.MeshBasicMaterial({ color: 0x00ffff, side: THREE.DoubleSide, transparent: true, opacity: 0.8 });
-            const ring = new THREE.Mesh(ringGeo, ringMat);
-            ring.position.copy(pos).add(new THREE.Vector3(0, 0.2, 0));
-            ring.rotation.x = Math.PI/2;
-            scene.add(ring);
-            let s = 1;
-            const animateRing = () => {
-                s += 0.2; ring.scale.set(s, s, s); ringMat.opacity -= 0.05;
-                if(ringMat.opacity > 0) { requestAnimationFrame(animateRing); }
-                else { scene.remove(ring); }
-            };
-            animateRing();
-        }
-
         function update() {
             requestAnimationFrame(update);
             const delta = clock.getDelta();
 
-            // 警告灯の明滅
             alarmLight.intensity = 1.5 + Math.sin(Date.now() * 0.005) * 1.0;
-
-            // 歯車の回転
             gears.forEach((g, idx) => { g.rotation.z += (idx % 2 === 0 ? 0.02 : -0.02); });
 
             if (!gameActive) {
@@ -516,14 +467,12 @@
                 return;
             }
 
-            // --- プレイヤー状態異常タイマー ---
             if (isSquishedTimer > 0) { isSquishedTimer--; player.scale.set(1.5, 0.1, 1.5); }
             else { player.scale.set(1, 1, 1); }
             if (playerHitInvincibleTimer > 0) playerHitInvincibleTimer--;
             if (itemMushroomTimer > 0) itemMushroomTimer--;
             if (itemBooTimer > 0) itemBooTimer--;
 
-            // --- プレイヤー物理挙動 ---
             if (isSquishedTimer <= 0) {
                 if (keys['ArrowUp'] || keys['KeyW']) {
                     let effMax = maxSpeed * (1 + coinCount * 0.03);
@@ -536,74 +485,50 @@
                     if (Math.abs(speed) < 0.01) speed = 0;
                 }
 
-                if (keys['ArrowLeft'] || keys['KeyA']) {
-                    angle += 0.04 * (speed > 0 ? 1 : -0.5);
-                }
-                if (keys['ArrowRight'] || keys['KeyD']) {
-                    angle -= 0.04 * (speed > 0 ? 1 : -0.5);
-                }
+                if (keys['ArrowLeft'] || keys['KeyA']) { angle += 0.04; }
+                if (keys['ArrowRight'] || keys['KeyD']) { angle -= 0.04; }
             } else {
                 speed *= drag;
             }
 
-            // 泥沼減速判定
             let inMud = false;
             mudPools.forEach(mud => {
-                let d = player.position.distanceTo(mud.position);
-                if (d < 12) { inMud = true; }
+                if (player.position.distanceTo(mud.position) < 12) { inMud = true; }
             });
             if (inMud && itemMushroomTimer <= 0) { speed *= 0.85; }
 
-            // アイテム使用
-            if (keys['Space']) {
-                keys['Space'] = false; // 連打防止
-                useItem();
-            }
+            if (keys['Space']) { keys['Space'] = false; useItem(); }
 
-            // 移動計算
             player.position.x += Math.sin(angle) * speed;
             player.position.z += Math.cos(angle) * speed;
             player.rotation.y = angle;
 
             speedVal.innerText = Math.round(Math.abs(speed) * 80);
 
-            // --- 巨大鉄球の移動 ---
             ballProgress += 0.003;
             let ballSegment = Math.floor(ballProgress * NODE_COUNT);
             let ballPercent = (ballProgress * NODE_COUNT) % 1;
             let bStart = npcPathNodes[ballSegment % NODE_COUNT];
             let bEnd = npcPathNodes[(ballSegment + 1) % NODE_COUNT];
             ironBall.position.set(bStart.x + (bEnd.x - bStart.x)*ballPercent, 4, bStart.z + (bEnd.z - bStart.z)*ballPercent);
-            ironBall.rotation.y += 0.05;
 
-            // 鉄球との衝突
             if (player.position.distanceTo(ironBall.position) < 5.5 && playerHitInvincibleTimer <= 0 && itemMushroomTimer <= 0) {
                 isSquishedTimer = 90; speed = 0;
                 playerHitInvincibleTimer = 180;
-                soundHit();
-                dropCoins();
-                turboText.innerText = "💥 巨大鉄球に押しつぶされた！！ 💥"; turboText.style.color = "#ff3333";
-                setTimeout(() => { turboText.innerText = ""; }, 2500);
+                soundHit(); dropCoins();
             }
 
-            // --- プレス機の稼働 ---
             crushers.forEach(crusher => {
                 crusher.cycle += delta * 4;
                 let y = 15 + Math.sin(crusher.cycle) * 11;
-                if(y < 1.0) { y = 0.5; crusher.state = 'down'; } else { crusher.state = 'up'; }
                 crusher.mesh.position.y = y;
 
-                // プレス衝突判定
                 if (y < 2.0 && player.position.distanceTo(crusher.mesh.position) < 6.5 && isSquishedTimer <= 0) {
                     isSquishedTimer = 100; speed = 0;
-                    soundHit();
-                    dropCoins();
-                    turboText.innerText = "💥 プレス機に潰された！！ 💥"; turboText.style.color = "#ff3333";
-                    setTimeout(() => { turboText.innerText = ""; }, 2500);
+                    soundHit(); dropCoins();
                 }
             });
 
-            // --- コイン回収 ---
             coins.forEach(coin => {
                 coin.rotation.y += 0.05;
                 if (player.position.distanceTo(coin.position) < 3.5) {
@@ -616,7 +541,6 @@
                 }
             });
 
-            // --- アイテムボックス回収 ---
             itemBoxes.forEach(box => {
                 if (box.respawnTimer > 0) {
                     box.respawnTimer--;
@@ -643,15 +567,12 @@
                 }
             });
 
-            // --- 進捗・ラップ判定 ---
             let nextNodeIdx = (currentProgressNode + 1) % NODE_COUNT;
-            let distToNext = player.position.distanceTo(npcPathNodes[nextNodeIdx]);
-            if (distToNext < 25) {
+            if (player.position.distanceTo(npcPathNodes[nextNodeIdx]) < 25) {
                 currentProgressNode = nextNodeIdx;
                 if (currentProgressNode === 0) {
                     playerLap++;
                     lapVal.innerText = playerLap;
-                    playTone(523.25, 0.1); setTimeout(()=>playTone(659.25, 0.2), 100);
                     if (playerLap > 3) {
                         gameActive = false;
                         showFinalResults();
@@ -659,10 +580,8 @@
                 }
             }
 
-            // --- NPCカートの更新 ---
             npcs.forEach((npc, index) => {
                 let nSpeed = (0.001 * npc.speed);
-                if (npc.isMega > 0) nSpeed *= 1.5;
                 npc.progress += nSpeed;
                 if (npc.progress >= 1) { npc.progress -= 1; npc.lap++; }
 
@@ -676,21 +595,8 @@
                     0.75,
                     startNode.z + (endNode.z - startNode.z) * segmentPercent + ((index % 2 === 0) ? 5 : -5)
                 );
-
-                // プレイヤーとNPCの衝突
-                if (player.position.distanceTo(npc.mesh.position) < 4.5 && playerHitInvincibleTimer <= 0) {
-                    if (npc.isMega > 0 && itemMushroomTimer <= 0) {
-                        isSquishedTimer = 60; speed = 0;
-                        playerHitInvincibleTimer = 180;
-                        soundHit();
-                        dropCoins();
-                        turboText.innerText = "💥 スター状態のライバルにハネ飛ばされた！！ 💥"; turboText.style.color = "#ff3333";
-                        setTimeout(() => { turboText.innerText = ""; }, 2500);
-                    }
-                }
             });
 
-            // --- カメラワーク ---
             let targetCamPos = new THREE.Vector3(
                 player.position.x - Math.sin(angle) * 25,
                 player.position.y + 11,
@@ -704,12 +610,9 @@
 
         function showFinalResults() {
             let totalTime = (performance.now() / 1000).toFixed(2);
-            let rank = 1;
-            npcs.forEach(npc => { if(npc.lap > 3 || (npc.lap === 3 && npc.progress > currentProgressNode/NODE_COUNT)) rank++; });
             let resultHtml = `
                 <div style="color: #fff; font-size: 32px; text-shadow: 2px 2px 5px #000; text-align: center;">
                     🏁 FINISH! 🏁<br>
-                    <span style="color: #ffd700; font-size: 40px;">RANK: ${rank === 1 ? '1st' : rank === 2 ? '2nd' : rank === 3 ? '3rd' : '4th'}</span><br>
                     Total Time: ${totalTime}s<br>
                     <span style="font-size: 16px; color: #888;">Ctrl + Rキーでもう一度遊べます</span>
                 </div>
@@ -730,13 +633,11 @@
 
         update();
 
-        // 画面リサイズ対応
-        window.addEventListener('resize', onWindowResize, false);
-        function onWindowResize() {
+        window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
-        }
+        }, false);
     </script>
 </body>
 </html>
