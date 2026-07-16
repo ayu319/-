@@ -69,7 +69,7 @@
         function soundCoin() { playTone(987.77, 0.08, "sine", 0.15); setTimeout(()=>playTone(1318.51, 0.25, "sine", 0.15), 80); }
         function soundRankUp() { playTone(523.25, 0.15, "sine", 0.15); setTimeout(()=>playTone(659.25, 0.15, "sine", 0.15), 100); setTimeout(()=>playTone(783.99, 0.25, "sine", 0.2), 200); }
 
-        // BGM簡易シーケンサー（ドラムビートを抑えてファクトリー風のベースライン）
+        // BGMシーケンサー
         let bgmInterval = null;
         function startBGM() {
             let step = 0;
@@ -77,16 +77,13 @@
             const melody = [220, 0, 261.6, 293.7, 0, 329.6, 220, 0];
             bgmInterval = setInterval(() => {
                 if (audioCtx.state === 'suspended') return;
-                // ベース
                 if (step % 2 === 0) {
                     playTone(bass[(step / 2) % bass.length], 0.2, "sawtooth", 0.05);
                 }
-                // メロディ
                 if (step % 4 === 0) {
                     let m = melody[(step / 4) % melody.length];
                     if (m > 0) playTone(m, 0.15, "triangle", 0.03);
                 }
-                // ドラム代わりのノイズ
                 if (step % 4 === 2) {
                     playTone(100, 0.03, "triangle", 0.04);
                 }
@@ -103,14 +100,12 @@
         renderer.shadowMap.enabled = true;
         document.body.appendChild(renderer.domElement);
 
-        // バックミラー用カメラ・レンダラー
         const mirrorCamera = new THREE.PerspectiveCamera(65, 240/135, 0.1, 1000);
         const mirrorContainer = document.getElementById("back-mirror");
         const mirrorRenderer = new THREE.WebGLRenderer({ antialias: true });
         mirrorRenderer.setSize(240, 135);
         mirrorContainer.appendChild(mirrorRenderer.domElement);
 
-        // 環境光 & 平行光源（シャドウ対応）
         const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
         scene.add(ambientLight);
         const dirLight = new THREE.DirectionalLight(0xffaa66, 0.8);
@@ -121,27 +116,22 @@
         dirLight.shadow.camera.near = 0.5;
         dirLight.shadow.camera.far = 1000;
         const d = 300;
-        dirLight.shadow.camera.left = -d;
-        dirLight.shadow.camera.right = d;
-        dirLight.shadow.camera.top = d;
-        dirLight.shadow.camera.bottom = -d;
+        dirLight.shadow.camera.left = -d; dirLight.shadow.camera.right = d;
+        dirLight.shadow.camera.top = d; dirLight.shadow.camera.bottom = -d;
         scene.add(dirLight);
 
-        // --- コース設計 ---
-        // キノピオファクトリーを模した、工場内部エリアと外部エリア（一部プレス機やダッシュ帯、泥沼）
+        // --- コース設計 (元のマップデータを完全に維持) ---
         const NODE_COUNT = 36;
         const npcPathNodes = [];
         for (let i = 0; i < NODE_COUNT; i++) {
             let angle = (i / NODE_COUNT) * Math.PI * 2;
             let radius = 250 + Math.sin(angle * 3) * 80;
             let y = 0;
-            // 一部高低差を付与
             if (i > 12 && i < 20) { y = (i - 12) * 4; }
             else if (i >= 20 && i < 28) { y = 32 - (i - 20) * 4; }
             npcPathNodes.push(new THREE.Vector3(Math.cos(angle)*radius, y, Math.sin(angle)*radius));
         }
 
-        // コース（アスファルト＆鉄板）の描画
         const roadWidth = 26;
         const roadGeometry = new THREE.BufferGeometry();
         const vertices = [];
@@ -164,7 +154,6 @@
             vertices.push(leftPoint.x, leftPoint.y, leftPoint.z);
             vertices.push(rightPoint.x, rightPoint.y, rightPoint.z);
 
-            // 工場内（一部鉄板・赤系）と外（アスファルト・灰色）で色を分ける
             let color = (idx > 10 && idx < 24) ? [0.4, 0.2, 0.2] : [0.25, 0.25, 0.25];
             colors.push(...color, ...color);
 
@@ -185,7 +174,7 @@
         roadMesh.receiveShadow = true;
         scene.add(roadMesh);
 
-        // コースの壁・ガードレール（マゼンタ＆イエローの衝突判定用）
+        // コース壁・ガードレール
         const wallMaterial = new THREE.MeshStandardMaterial({ color: 0xff3366, metalness: 0.3, roughness: 0.5 });
         const wallGroup = new THREE.Group();
         for (let i = 0; i < NODE_COUNT; i++) {
@@ -197,7 +186,6 @@
             let forward = new THREE.Vector3().subVectors(next, curr).normalize();
             let right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0,1,0)).normalize().multiplyScalar(roadWidth / 2);
 
-            // 左壁
             let pL1 = curr.clone().sub(right);
             let pL2 = next.clone().sub(right);
             let dist = pL1.distanceTo(pL2);
@@ -209,7 +197,6 @@
             wall.lookAt(pL2.clone().add(new THREE.Vector3(0, 2, 0)));
             wallGroup.add(wall);
 
-            // 右壁
             let pR1 = curr.clone().add(right);
             let pR2 = next.clone().add(right);
             let wallGeomR = new THREE.BoxGeometry(0.8, 4, dist);
@@ -222,15 +209,14 @@
         }
         scene.add(wallGroup);
 
-        // --- 装飾用オブジェクト（コンテナ、巨大プレス機） ---
+        // 装飾用オブジェクト（コンテナ、巨大プレス機）
         const obstacleGroup = new THREE.Group();
         scene.add(obstacleGroup);
 
-        // プレス機（踏み潰しギミック。一定時間で上下する）
         const pressGeometry = new THREE.BoxGeometry(10, 15, 10);
         const pressMaterial = new THREE.MeshStandardMaterial({ color: 0x778899, metalness: 0.8, roughness: 0.2 });
         const presses = [];
-        const pressPositions = [12, 16, 20]; // コースのノードインデックスに配置
+        const pressPositions = [12, 16, 20];
         pressPositions.forEach(idx => {
             let mesh = new THREE.Mesh(pressGeometry, pressMaterial);
             let p = npcPathNodes[idx];
@@ -252,11 +238,11 @@
         const itemBoxes = [];
         const itemBoxGeom = new THREE.BoxGeometry(3, 3, 3);
         const itemBoxMat = new THREE.MeshStandardMaterial({ color: 0x00ffff, transparent: true, opacity: 0.7, wireframe: false });
-        const itemBoxSpawnPoints = [4, 10, 18, 25, 30]; // 設置ノード
+        const itemBoxSpawnPoints = [4, 10, 18, 25, 30];
 
         itemBoxSpawnPoints.forEach(idx => {
             let baseNode = npcPathNodes[idx];
-            for (let side = -1; side <= 1; side += 2) { // 左右に1個ずつ
+            for (let side = -1; side <= 1; side += 2) {
                 let forward = new THREE.Vector3().subVectors(npcPathNodes[(idx+1)%NODE_COUNT], baseNode).normalize();
                 let right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0,1,0)).normalize().multiplyScalar(side * 6);
                 let box = new THREE.Mesh(itemBoxGeom, itemBoxMat);
@@ -289,24 +275,23 @@
         });
         scene.add(coinGroup);
 
-        // 障害物：バナナ（踏むとスピン）
+        // 障害物：バナナ
         const hazardGroup = new THREE.Group();
-        const hazards = []; // { mesh, type: 'banana', x, z }
+        const hazards = [];
         scene.add(hazardGroup);
 
-        // 障害物：緑こうら（直進反射する弾）
-        const shells = []; // { mesh, dir, type: 'green' }
+        // 障害物：こうら
+        const shells = [];
 
         // --- カート(自車)の実装 ---
         const cartGroup = new THREE.Group();
-        // ボディ
         const bodyGeom = new THREE.BoxGeometry(3, 1, 5);
         const bodyMat = new THREE.MeshStandardMaterial({ color: 0x3388ff, metalness: 0.5, roughness: 0.2 });
         const body = new THREE.Mesh(bodyGeom, bodyMat);
         body.position.y = 1;
         body.castShadow = true;
         cartGroup.add(body);
-        // タイヤ
+
         const wheelGeom = new THREE.CylinderGeometry(0.8, 0.8, 0.6, 12);
         const wheelMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
         const wheels = [];
@@ -326,16 +311,15 @@
 
         // ライバル(NPC)の作成
         const npcs = [
-            { id: "キノピオ", color: 0xff3333, progress: 0.0, lap: 1, baseSpeed: 1.05, speed: 0, mesh: null, heldItem: null, itemUseTimer: 0, isSquished: 0, isMega: 0, finished: false },
-            { id: "クッパ", color: 0x33aa33, progress: 0.0, lap: 1, baseSpeed: 1.10, speed: 0, mesh: null, heldItem: null, itemUseTimer: 0, isSquished: 0, isMega: 0, finished: false },
-            { id: "ルイージ", color: 0x33ff33, progress: 0.0, lap: 1, baseSpeed: 1.03, speed: 0, mesh: null, heldItem: null, itemUseTimer: 0, isSquished: 0, isMega: 0, finished: false },
+            { id: "キノピオ", color: 0xff3333, progress: 0.0, lap: 1, baseSpeed: 0.00105, speed: 0, mesh: null, heldItem: null, itemUseTimer: 0, isSquished: 0, isMega: 0 },
+            { id: "クッパ", color: 0x33aa33, progress: 0.0, lap: 1, baseSpeed: 0.00110, speed: 0, mesh: null, heldItem: null, itemUseTimer: 0, isSquished: 0, isMega: 0 },
+            { id: "ルイージ", color: 0x33ff33, progress: 0.0, lap: 1, baseSpeed: 0.00103, speed: 0, mesh: null, heldItem: null, itemUseTimer: 0, isSquished: 0, isMega: 0 },
         ];
         npcs.forEach((npc, index) => {
             let g = new THREE.Group();
             let b = new THREE.Mesh(new THREE.BoxGeometry(3, 1, 5), new THREE.MeshStandardMaterial({ color: npc.color }));
             b.position.y = 1;
             g.add(b);
-            // タイヤ
             wheelPositions.forEach(pos => {
                 let w = new THREE.Mesh(wheelGeom, wheelMat);
                 w.rotation.z = Math.PI / 2;
@@ -344,7 +328,6 @@
             });
             scene.add(g);
             npc.mesh = g;
-            // 初期位置をずらしてセット
             let startNode = npcPathNodes[0];
             g.position.set(startNode.x + (index - 1)*6, 0, startNode.z + (index - 1)*6);
         });
@@ -352,7 +335,7 @@
         // プレイヤー初期化
         let playerPosX = 0;
         let playerPosZ = 0;
-        let playerProgress = 0.0; // 0.0〜1.0
+        let playerProgress = 0.0;
         let playerLap = 1;
         const playerStartPos = npcPathNodes[0];
         playerPosX = playerStartPos.x;
@@ -365,12 +348,11 @@
         let acceleration = 0.02;
         let deceleration = 0.015;
         let friction = 0.005;
-        let yaw = Math.PI / 2; // 機首方位
+        let yaw = Math.PI / 2;
 
         let keys = { ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false, Space: false, KeyShift: false, KeyZ: false };
-        let canDrive = false; // カウントダウン後にtrue
+        let canDrive = false;
 
-        // 順位管理、コイン、周回タイム
         let coinsCollected = 0;
         let rank = 4;
         let lapTimes = [];
@@ -378,30 +360,26 @@
         let lapFrame = 0;
         let isFinished = false;
 
-        // ドリフトシステム
         let isDrifting = false;
-        let driftDirection = 0; // -1: 左, 1: 右
-        let driftTimer = 0; // ミニターボチャージ時間
-        let mtSparkLevel = 0; // 0:なし, 1:青(ミニターボ), 2:黄(スーパーミニターボ), 3:紫(ウルトラミニターボ)
-        let turboTimer = 0; // ターボブースト持続時間
+        let driftDirection = 0;
+        let driftTimer = 0;
+        let mtSparkLevel = 0;
+        let turboTimer = 0;
         let isJumping = false;
         let jumpY = 0;
         let jumpVelocity = 0;
 
         // アイテムシステム
-        let currentItem = null; // 'mushroom', 'star', 'banana', 'green_shell', 'boo'
+        let currentItem = null;
         let itemRouletteTimer = 0;
         let itemMushroomTimer = 0;
         let itemGoldenTimer = 0;
         let itemStarTimer = 0;
-        let itemBooTimer = 0; // テレサ（すり抜け＆他人のアイテム奪取）
-        let isSquishedTimer = 0; // 潰され状態
-        let playerHitInvincibleTimer = 0; // 被弾後の無敵時間
+        let itemBooTimer = 0;
+        let isSquishedTimer = 0;
+        let playerHitInvincibleTimer = 0;
 
-        // スリップストリームシステム
-        let ssCharge = 0; // 前方の車尾に張り付いている時間
-
-        // パーティクルシステム（マフラーの煙、火花など）
+        // パーティクルシステム
         const particleGroup = new THREE.Group();
         scene.add(particleGroup);
         const particles = [];
@@ -438,13 +416,12 @@
             if (e.code === "KeyZ") keys.KeyZ = false;
         });
 
-        // --- アイテム抽選アルゴリズム ---
+        // --- アイテム抽選アルゴリズム（キラーを安全に除外して確率をリバランス） ---
         function lotteryItem(currentRank) {
-            // キラー(killer)はバグ回避のため完全に除外
             const itemsPool = [
-                { item: 'mushroom', weight: [60, 40, 20, 10] },    // 順位が高いほどきのこ出やすい
-                { item: 'golden_mushroom', weight: [0, 20, 40, 30] },
-                { item: 'star', weight: [0, 10, 20, 40] },
+                { item: 'mushroom', weight: [60, 40, 20, 10] },
+                { item: 'golden_mushroom', weight: [0, 20, 45, 45] }, // killerの枠をリバランス
+                { item: 'star', weight: [0, 15, 25, 45] },            // killerの枠をリバランス
                 { item: 'banana', weight: [40, 10, 0, 0] },
                 { item: 'green_shell', weight: [30, 30, 10, 0] },
                 { item: 'boo', weight: [10, 10, 10, 20] }
@@ -461,7 +438,7 @@
             return 'mushroom';
         }
 
-        // --- アイテム使用処理 ---
+        // --- アイテム使用処理（キラーの項目を削除） ---
         function useItem() {
             if (!currentItem || itemRouletteTimer > 0) return;
             soundItemUse();
@@ -488,8 +465,7 @@
                 hazardGroup.add(shellMesh);
                 shells.push({ mesh: shellMesh, dir: forward.clone(), type: 'green' });
             } else if (currentItem === 'boo') {
-                itemBooTimer = 240; // 4秒間ステルス
-                // ライバルの誰かからアイテムを奪い取る
+                itemBooTimer = 240;
                 let candidates = npcs.filter(n => n.heldItem !== null);
                 if (candidates.length > 0) {
                     let target = candidates[Math.floor(Math.random() * candidates.length)];
@@ -500,7 +476,6 @@
                 }
             }
 
-            // ゴールデンキノコは時間中なら消費しない
             if (itemGoldenTimer > 0 && currentItem === 'golden_mushroom') {
                 turboTimer = 60;
                 soundMushroom();
@@ -510,7 +485,7 @@
             }
         }
 
-        // NPC用のアイテム発動
+        // NPC用のアイテム発動（元の状態を完全に維持）
         function useNpcItem(npc) {
             if (!npc.heldItem) return;
             let pIdx = Math.floor(npc.progress * NODE_COUNT);
@@ -518,7 +493,7 @@
             if (npc.heldItem === 'mushroom') {
                 npc.speed += 0.8;
             } else if (npc.heldItem === 'star') {
-                npc.isMega = 300; // 巨大スター化
+                npc.isMega = 300;
             } else if (npc.heldItem === 'banana') {
                 let b = new THREE.Mesh(new THREE.CylinderGeometry(0.8, 0.8, 1, 8), new THREE.MeshStandardMaterial({ color: 0xffeb3b }));
                 b.position.set(npc.mesh.position.x, 0.5, npc.mesh.position.z);
@@ -538,7 +513,7 @@
             return '❓';
         }
 
-        // 被弾によるコインロスト
+        // コインロスト処理
         function dropCoins() {
             let lost = Math.min(coinsCollected, 3);
             coinsCollected -= lost;
@@ -547,12 +522,12 @@
                 coinMesh.rotation.x = Math.PI / 2;
                 coinMesh.position.set(cartGroup.position.x + (Math.random()-0.5)*15, 1.5, cartGroup.position.z + (Math.random()-0.5)*15);
                 coinGroup.add(coinMesh);
-                coins.push({ mesh: coinMesh, active: true, respawnTimer: 200, index: -1 }); // 再生成不可 or 後で消える
+                coins.push({ mesh: coinMesh, active: true, respawnTimer: 200, index: -1 });
             }
             document.getElementById("coin-display").innerText = "COINS: " + coinsCollected;
         }
 
-        // --- コース沿い進行度の概算判定 ---
+        // コースに沿った進行度の概算判定 (元のロジックを完全維持)
         function getClosestProgress(pos) {
             let minDist = Infinity;
             let closestSegment = 0;
@@ -566,7 +541,6 @@
             let p2 = npcPathNodes[closestSegment];
             let p3 = npcPathNodes[nextSegment];
 
-            // 射影からより詳細な進行度を算出
             let v1 = new THREE.Vector3().subVectors(p3, p2).normalize();
             let v2 = new THREE.Vector3().subVectors(pos, p2);
             let proj = v2.dot(v1);
@@ -594,7 +568,7 @@
                 clearInterval(countdownInterval);
             }
         }, 1000);
-        playTone(440, 0.15, "sine", 0.15); // 初回音
+        playTone(440, 0.15, "sine", 0.15);
 
         // --- メインアップデートループ ---
         function update() {
@@ -602,14 +576,7 @@
             totalFrame++;
             if (canDrive && !isFinished) lapFrame++;
 
-            // 泥判定
-            let isOnMud = false;
-            let distFromCenter = Math.sqrt(cartGroup.position.x**2 + cartGroup.position.z**2);
-            if (distFromCenter > 220 && distFromCenter < 240) {
-                isOnMud = true;
-            }
-
-            // タイマーやインビンシブルの処理
+            // 各種バフ・デバフのタイマー更新
             if (playerHitInvincibleTimer > 0) playerHitInvincibleTimer--;
             if (isSquishedTimer > 0) isSquishedTimer--;
             if (itemBooTimer > 0) {
@@ -623,7 +590,6 @@
 
             if (itemStarTimer > 0) {
                 itemStarTimer--;
-                // スター時の虹色点滅
                 body.material.color.setHex(Math.sin(totalFrame*0.5)*0xffffff);
             } else {
                 body.material.color.setHex(0x3388ff);
@@ -632,16 +598,9 @@
             // --- プレイヤー物理挙動 ---
             if (canDrive && isSquishedTimer <= 0) {
                 let speedLim = maxNormalSpeed;
-                // 各種ブースト補正
                 if (turboTimer > 0) { speedLim = 2.4; turboTimer--; }
                 else if (itemStarTimer > 0) { speedLim = 2.2; }
-                else if (isOnMud) { speedLim = 0.5; } // 泥沼による大幅なスピードロス
 
-                // コイン枚数による速度アップ（1枚につき0.5%向上、最大10枚まで）
-                let coinSpeedBonus = 1.0 + Math.min(coinsCollected, 10) * 0.005;
-                speedLim *= coinSpeedBonus;
-
-                // 加減速
                 if (keys.ArrowUp) {
                     speed += acceleration;
                     if (speed > speedLim) speed -= friction * 2;
@@ -653,16 +612,14 @@
                     else if (speed < 0) speed += friction;
                 }
 
-                // 旋回（ドリフト中や低速時などで操舵感を変える）
                 let turnSpeed = 0.04;
                 if (Math.abs(speed) > 0.1) {
                     let dirFactor = speed > 0 ? 1 : -1;
                     if (isDrifting) {
-                        // ドリフト中は進行方向へさらに深く曲がり、滑る挙動に
-                        if (driftDirection === -1) { // 左ドリフト
+                        if (driftDirection === -1) {
                             yaw += 0.052 * dirFactor;
-                            if (keys.ArrowRight) yaw -= 0.015; // カウンターステアで調整可能
-                        } else { // 右ドリフト
+                            if (keys.ArrowRight) yaw -= 0.015;
+                        } else {
                             yaw -= 0.052 * dirFactor;
                             if (keys.ArrowLeft) yaw += 0.015;
                         }
@@ -672,20 +629,17 @@
                     }
                 }
 
-                // ドリフト判定
                 if (keys.KeyShift && (keys.ArrowLeft || keys.ArrowRight) && Math.abs(speed) > 0.8 && !isDrifting && !isJumping) {
                     isDrifting = true;
                     driftDirection = keys.ArrowLeft ? -1 : 1;
                     driftTimer = 0;
                     mtSparkLevel = 0;
-                    // ドリフトジャンプ立ち上がり
                     isJumping = true;
                     jumpVelocity = 0.6;
                 }
 
                 if (isDrifting) {
                     if (!keys.KeyShift) {
-                        // ミニターボ解放！
                         isDrifting = false;
                         if (mtSparkLevel > 0) {
                             soundDriftRelease();
@@ -699,12 +653,11 @@
                         mtSparkLevel = 0;
                     } else {
                         driftTimer++;
-                        // ドリフト煙＆火花演出
                         if (driftTimer % 3 === 0) soundDriftCharge();
                         let sparkColor = 0xffffff;
-                        if (driftTimer > 180) { mtSparkLevel = 3; sparkColor = 0xe040fb; } // 紫火花
-                        else if (driftTimer > 100) { mtSparkLevel = 2; sparkColor = 0xffd700; } // 黄火花
-                        else if (driftTimer > 40) { mtSparkLevel = 1; sparkColor = 0x00e5ff; } // 青火花
+                        if (driftTimer > 180) { mtSparkLevel = 3; sparkColor = 0xe040fb; }
+                        else if (driftTimer > 100) { mtSparkLevel = 2; sparkColor = 0xffd700; }
+                        else if (driftTimer > 40) { mtSparkLevel = 1; sparkColor = 0x00e5ff; }
 
                         if (mtSparkLevel > 0) {
                             let backPos = cartGroup.position.clone().add(new THREE.Vector3(Math.sin(yaw)*2, 0, Math.cos(yaw)*2));
@@ -713,16 +666,14 @@
                     }
                 }
 
-                // 物理位置の更新
                 let velocityX = -Math.sin(yaw) * speed;
                 let velocityZ = -Math.cos(yaw) * speed;
                 cartGroup.position.x += velocityX;
                 cartGroup.position.z += velocityZ;
 
-                // ジャンプ物理処理
                 if (isJumping) {
                     jumpY += jumpVelocity;
-                    jumpVelocity -= 0.05; // 重力
+                    jumpVelocity -= 0.05;
                     if (jumpY <= 0) {
                         jumpY = 0;
                         isJumping = false;
@@ -731,55 +682,18 @@
                 }
                 cartGroup.position.y = jumpY;
 
-                // マフラー煙の排出
                 if (totalFrame % 5 === 0 && Math.abs(speed) > 0.2) {
                     let backPos = cartGroup.position.clone().add(new THREE.Vector3(Math.sin(yaw)*2.2, 0.4, Math.cos(yaw)*2.2));
                     createSmoke(backPos, 0xaaaaaa, 0.3);
                 }
             } else {
-                // スピン中または被弾停止中
                 speed *= 0.9;
                 cartGroup.position.x += -Math.sin(yaw) * speed;
                 cartGroup.position.z += -Math.cos(yaw) * speed;
             }
 
-            // --- スリップストリーム処理 ---
-            let ssActiveThisFrame = false;
-            npcs.forEach(npc => {
-                if (npc.finished) return;
-                let distToNpc = cartGroup.position.distanceTo(npc.mesh.position);
-                if (distToNpc < 45 && distToNpc > 10) {
-                    // 自車がNPCの後ろにいるか（簡易角度判定）
-                    let toNpc = new THREE.Vector3().subVectors(npc.mesh.position, cartGroup.position).normalize();
-                    let forward = new THREE.Vector3(-Math.sin(yaw), 0, -Math.cos(yaw)).normalize();
-                    let angle = toNpc.dot(forward);
-                    if (angle > 0.96) { // ほぼ真後ろ
-                        ssActiveThisFrame = true;
-                    }
-                }
-            });
-            if (ssActiveThisFrame && speed > 1.0) {
-                ssCharge++;
-                if (ssCharge > 80) { // 継続して後ろについたらスリップストリーム発動！
-                    turboTimer = 70;
-                    ssCharge = 0;
-                    soundDriftRelease();
-                    let ui = document.getElementById("turbo-ui");
-                    ui.innerText = "💨 SLIPSTREAM!! 💨"; ui.style.color = "#ffffff";
-                    setTimeout(() => { ui.innerText = ""; }, 1000);
-                }
-                // スリップストリーム中の風エフェクト風の煙
-                if (totalFrame % 3 === 0) {
-                    createSmoke(cartGroup.position.clone().add(new THREE.Vector3(0, 1.2, 0)), 0xffffff, 0.2);
-                }
-            } else {
-                ssCharge = Math.max(0, ssCharge - 2);
-            }
-
-            // 回転などの車両ビジュアル向き調整
             cartGroup.rotation.y = yaw;
             if (isDrifting) {
-                // ドリフト時の車体の傾き
                 body.rotation.z = -driftDirection * 0.18;
                 body.rotation.y = -driftDirection * 0.15;
             } else {
@@ -787,29 +701,26 @@
                 body.rotation.y = 0;
             }
 
-            // コース壁・ガードレール衝突判定（跳ね返り＆ノックバック）
             let wallCollided = false;
             let closestNodeIdx = Math.floor(getClosestProgress(cartGroup.position) * NODE_COUNT) % NODE_COUNT;
             let trackCenter = npcPathNodes[closestNodeIdx];
             let distToCenter = cartGroup.position.distanceTo(trackCenter);
             if (distToCenter > roadWidth / 2 - 1.5) {
                 wallCollided = true;
-                // 壁に突っ込んだ場合、押し戻す
                 let pushDir = new THREE.Vector3().subVectors(cartGroup.position, trackCenter).setY(0).normalize();
                 cartGroup.position.add(pushDir.multiplyScalar(roadWidth / 2 - 1.5 - distToCenter));
 
-                // 壁キックシステム（ドリフト中に壁に接触し、且つ外側へハンドルを切っていた場合、跳ね返ってミニダッシュ）
                 if (isDrifting && Math.abs(speed) > 1.0) {
                     isDrifting = false;
-                    speed = 0.5; // 一旦失速するが
-                    turboTimer = 55; // 跳ね返りダッシュ！
-                    yaw += Math.PI * 0.8 * driftDirection; // 向きを変える
+                    speed = 0.5;
+                    turboTimer = 55;
+                    yaw += Math.PI * 0.8 * driftDirection;
                     soundDriftRelease();
                     let ui = document.getElementById("turbo-ui");
                     ui.innerText = "💥 WALL KICK!! 💥"; ui.style.color = "#e040fb";
                     setTimeout(() => { ui.innerText = ""; }, 1000);
                 } else {
-                    speed = -0.4; // 通常の衝突減速
+                    speed = -0.4;
                     soundHit();
                 }
             }
@@ -829,15 +740,15 @@
                 if (dist < 4.0) {
                     box.active = false;
                     box.mesh.visible = false;
-                    box.respawnTimer = 300; // 5秒でリスタート
+                    box.respawnTimer = 300;
                     soundItemGet();
                     if (!currentItem && itemRouletteTimer === 0) {
-                        itemRouletteTimer = 90; // ルーレット開始
+                        itemRouletteTimer = 90;
                     }
                 }
             });
 
-            // プレイヤーアイテムルーレット
+            // プレイヤーアイテムルーレット (🚀を完全除外したリストで演出)
             if (itemRouletteTimer > 0) {
                 itemRouletteTimer--;
                 let rouletteIcons = ['🍄', '👑', '⭐', '🍌', '🐢', '👻'];
@@ -854,7 +765,7 @@
                 if (!coin.active) {
                     if (coin.respawnTimer > 0) {
                         coin.respawnTimer--;
-                        if (coin.respawnTimer <= 0 && coin.index !== -1) { // プレイヤーが撒いたコインは復活させない
+                        if (coin.respawnTimer <= 0 && coin.index !== -1) {
                             coin.active = true;
                             coin.mesh.visible = true;
                         }
@@ -866,24 +777,22 @@
                 if (dist < 3.5) {
                     coin.active = false;
                     coin.mesh.visible = false;
-                    coin.respawnTimer = 400; // 約6.6秒でリポップ
+                    coin.respawnTimer = 400;
                     coinsCollected++;
                     soundCoin();
                     document.getElementById("coin-display").innerText = "COINS: " + coinsCollected;
                 }
             });
 
-            // --- プレス機障害物（プレイヤー・NPC衝突） ---
+            // --- プレス機障害物 ---
             presses.forEach(p => {
-                // 上下運動
                 let height = p.baseHeight + Math.sin(totalFrame * 0.08 + p.offset) * 12;
                 p.mesh.position.y = height;
 
-                // 衝突判定（最下点付近かつ真下にいる場合）
                 if (height < 6.5) {
                     let d = cartGroup.position.distanceTo(new THREE.Vector3(p.mesh.position.x, 0, p.mesh.position.z));
                     if (d < 5.5 && isSquishedTimer <= 0 && itemStarTimer <= 0 && itemBooTimer <= 0 && playerHitInvincibleTimer <= 0) {
-                        isSquishedTimer = 120; // 2秒間潰される
+                        isSquishedTimer = 120;
                         speed = 0;
                         itemMushroomTimer = 0;
                         itemGoldenTimer = 0;
@@ -897,17 +806,15 @@
                 }
             });
 
-            // --- 障害物（ハザード）の判定 ---
+            // --- バナナ障害物の判定 ---
             hazards.forEach((h, hIdx) => {
                 let dist = cartGroup.position.distanceTo(h.mesh.position);
-                // テレサ（boo）状態の時は障害物を無視する
                 if (dist < 3.5 && itemBooTimer <= 0) {
                     if (itemStarTimer > 0) {
-                        // スター状態なら障害物を破壊
                         hazardGroup.remove(h.mesh);
                         hazards.splice(hIdx, 1);
                     } else if (isSquishedTimer <= 0 && playerHitInvincibleTimer <= 0) {
-                        isSquishedTimer = 80; // スピン
+                        isSquishedTimer = 80;
                         speed = 0;
                         playerHitInvincibleTimer = 140;
                         soundHit();
@@ -921,20 +828,17 @@
                 }
             });
 
-            // こうらの移動と判定
+            // --- こうらの判定 ---
             shells.forEach((sh, shIdx) => {
                 sh.mesh.position.addScaledVector(sh.dir, 1.8);
-                // 反射処理（簡易的にコース中央から離れたら向きを反転）
                 let cNode = npcPathNodes[Math.floor(getClosestProgress(sh.mesh.position)*NODE_COUNT)%NODE_COUNT];
                 if (sh.mesh.position.distanceTo(cNode) > roadWidth/2 - 1.0) {
                     sh.dir.negate();
                     soundHit();
                 }
-                // 自車とのヒット
                 let dist = cartGroup.position.distanceTo(sh.mesh.position);
                 if (dist < 3.8 && itemBooTimer <= 0) {
                     if (itemStarTimer > 0) {
-                        // スター時はこうらを粉砕
                         hazardGroup.remove(sh.mesh);
                         shells.splice(shIdx, 1);
                     } else if (isSquishedTimer <= 0 && playerHitInvincibleTimer <= 0) {
@@ -953,14 +857,12 @@
 
             // --- ライバル(NPC)の更新 ---
             npcs.forEach((npc, index) => {
-                if (npc.finished) return;
                 let nSpeed = npc.baseSpeed * (0.95 + Math.sin(totalFrame*0.01 + index)*0.05);
                 if (npc.isSquished > 0) {
                     npc.isSquished--;
                     nSpeed = 0;
                 }
 
-                // プレイヤーが巨大・スター状態でライバルにぶつかったらハネ飛ばす
                 let distToPlayer = npc.mesh.position.distanceTo(cartGroup.position);
                 if (distToPlayer < 6.0) {
                     if (itemStarTimer > 0) {
@@ -978,18 +880,13 @@
                     }
                 }
 
-                npc.progress += nSpeed * 0.0012; // 移動スピード微調整
+                npc.progress += nSpeed;
                 if (npc.progress >= 1) {
                     npc.progress -= 1;
                     npc.lap++;
-                    if (npc.lap > 3) {
-                        npc.finished = true;
-                    }
                 }
 
-                // 一定確率でアイテム所持
                 if (!npc.heldItem && Math.random() < 0.001) {
-                    // キラーを除いたアイテム
                     let npcItems = ['mushroom', 'banana', 'star'];
                     npc.heldItem = npcItems[Math.floor(Math.random()*npcItems.length)];
                     npc.itemUseTimer = 100 + Math.random()*200;
@@ -1018,17 +915,14 @@
                     npc.mesh.scale.set(1, 1, 1);
                 }
 
-                // 向き
                 let dir = new THREE.Vector3().subVectors(endNode, startNode).normalize();
                 npc.mesh.lookAt(npc.mesh.position.clone().add(dir));
             });
 
-            // --- プレイヤー進行度・周回計算 ---
+            // --- プレイヤー進行度・周回タイム計算 ---
             playerProgress = getClosestProgress(cartGroup.position);
-            // 周回通過判定（Node 0付近かつ進行方向が正しい場合）
             let node0Dist = cartGroup.position.distanceTo(npcPathNodes[0]);
             if (node0Dist < 18.0) {
-                // 簡易周回跨ぎ判定
                 if (playerProgress > 0.0 && playerProgress < 0.1 && totalFrame > 500) {
                     if (lapTimes.length < playerLap) {
                         let sec = (lapFrame / 60).toFixed(2);
@@ -1037,7 +931,6 @@
                         playerLap++;
                         soundRankUp();
 
-                        // 3周走ったらゴール！
                         if (playerLap > 3) {
                             isFinished = true;
                             canDrive = false;
@@ -1054,7 +947,7 @@
                 }
             }
 
-            // 逆走判定
+            // 逆走警告
             let prevNode = npcPathNodes[(closestNodeIdx - 1 + NODE_COUNT) % NODE_COUNT];
             let nextNode = npcPathNodes[(closestNodeIdx + 1) % NODE_COUNT];
             let vNormal = new THREE.Vector3().subVectors(nextNode, prevNode).normalize();
@@ -1098,11 +991,10 @@
                 }
             });
 
-            // UIスピードメーター更新 (100倍換算してそれっぽい時速にする)
             let speedKmh = (Math.abs(speed) * 110).toFixed(1);
             document.getElementById("speed-display").innerText = "SPEED: " + speedKmh + " km/h";
 
-            // --- メインカメラ追従 ---
+            // --- カメラ追従 ---
             let backCamOffset = new THREE.Vector3(Math.sin(yaw)*16, 6, Math.cos(yaw)*16);
             camera.position.copy(cartGroup.position).add(backCamOffset);
             camera.lookAt(cartGroup.position.clone().add(new THREE.Vector3(0, 1.5, 0)));
@@ -1112,7 +1004,6 @@
             mirrorCamera.position.copy(cartGroup.position).add(frontCamOffset);
             mirrorCamera.lookAt(cartGroup.position);
 
-            // 描画
             renderer.render(scene, camera);
             mirrorRenderer.render(scene, mirrorCamera);
         }
@@ -1141,7 +1032,6 @@
             document.body.appendChild(div);
         }
 
-        // --- ウィンドウリサイズ対応 ---
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
