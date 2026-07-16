@@ -120,7 +120,46 @@
         dirLight.shadow.camera.top = d; dirLight.shadow.camera.bottom = -d;
         scene.add(dirLight);
 
-        // --- コース設計 (元のマップデータを完全に維持) ---
+        // --- コース設計 (元のマップデータを完全に維持できてない) ---
+        const NODE_COUNT = 36;
+        const npcPathNodes = [
+            new THREE.Vector3(0, 0, 0),
+            new THREE.Vector3(0, 0, -40),
+            new THREE.Vector3(0, 0, -80),
+            new THREE.Vector3(0, 0, -120),
+            new THREE.Vector3(10, 0, -150),
+            new THREE.Vector3(30, 0, -170),
+            new THREE.Vector3(60, 0, -180),
+            new THREE.Vector3(100, 0, -180),
+            new THREE.Vector3(140, 0, -180),
+            new THREE.Vector3(180, 0, -180),
+            new THREE.Vector3(210, 2, -160),
+            new THREE.Vector3(220, 6, -130),
+            new THREE.Vector3(220, 12, -90),
+            new THREE.Vector3(220, 16, -50),
+            new THREE.Vector3(220, 20, -10),
+            new THREE.Vector3(210, 20, 20),
+            new THREE.Vector3(180, 18, 40),
+            new THREE.Vector3(140, 14, 40),
+            new THREE.Vector3(100, 8, 40),
+            new THREE.Vector3(60, 2, 40),
+            new THREE.Vector3(20, 0, 40),
+            new THREE.Vector3(-20, 0, 40),
+            new THREE.Vector3(-50, 0, 50),
+            new THREE.Vector3(-70, 0, 70),
+            new THREE.Vector3(-80, 0, 100),
+            new THREE.Vector3(-80, 0, 140),
+            new THREE.Vector3(-80, 0, 180),
+            new THREE.Vector3(-70, 0, 210),
+            new THREE.Vector3(-50, 0, 230),
+            new THREE.Vector3(-20, 0, 240),
+            new THREE.Vector3(20, 0, 240),
+            new THREE.Vector3(60, 0, 230),
+            new THREE.Vector3(80, 0, 200),
+            new THREE.Vector3(80, 0, 150),
+            new THREE.Vector3(50, 0, 100),
+            new THREE.Vector3(20, 0, 40)
+        ];
         const NODE_COUNT = 36;
         const npcPathNodes = [];
         for (let i = 0; i < NODE_COUNT; i++) {
