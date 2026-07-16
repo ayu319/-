@@ -119,8 +119,7 @@
         dirLight.shadow.camera.left = -d; dirLight.shadow.camera.right = d;
         dirLight.shadow.camera.top = d; dirLight.shadow.camera.bottom = -d;
         scene.add(dirLight);
-
-// --- コース設計 (元のマップデータを完全に復元) ---
+        // --- コース設計 (元のマップデータを完全に復元) ---
         const NODE_COUNT = 36;
         const npcPathNodes = [
             new THREE.Vector3(0, 0, 0),
@@ -193,6 +192,18 @@
             }
         }
 
+        roadGeometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+        roadGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+        roadGeometry.setIndex(indices);
+        roadGeometry.computeVertexNormals();
+
+        const roadMaterial = new THREE.MeshStandardMaterial({
+            vertexColors: true,
+            roughness: 0.8
+        });
+        const roadMesh = new THREE.Mesh(roadGeometry, roadMaterial);
+        roadMesh.receiveShadow = true;
+        scene.add(roadMesh);
         roadGeometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
         roadGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
         roadGeometry.setIndex(indices);
