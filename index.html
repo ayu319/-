@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>キノピオファクトリー：完全バグ修正統合版</title>
+    <title>キノピオファクトリー：立体コース完全復元版</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
         #ui-container {
@@ -77,7 +77,7 @@
         alarmLight.position.set(0, 30, 0);
         scene.add(alarmLight);
 
-        // --- コース設計 (元のマップデータを完全に復元) ---
+        // --- コース設計 (3D立体チューブコースを完全復元) ---
         const NODE_COUNT = 36;
         const npcPathNodes = [
             new THREE.Vector3(0, 0, 0),
@@ -119,49 +119,25 @@
         ];
 
         const roadWidth = 26;
-        const roadGeometry = new THREE.BufferGeometry();
-        const vertices = [];
-        const indices = [];
-        const colors = [];
-
-        for (let i = 0; i <= NODE_COUNT; i++) {
-            let idx = i % NODE_COUNT;
-            let nextIdx = (i + 1) % NODE_COUNT;
-            let curr = npcPathNodes[idx];
-            let next = npcPathNodes[nextIdx];
-
-            let forward = new THREE.Vector3().subVectors(next, curr).normalize();
-            let up = new THREE.Vector3(0, 1, 0);
-            let right = new THREE.Vector3().crossVectors(forward, up).normalize().multiplyScalar(roadWidth / 2);
-            let leftPoint = curr.clone().sub(right);
-            let rightPoint = curr.clone().add(right);
-
-            vertices.push(leftPoint.x, leftPoint.y, leftPoint.z);
-            vertices.push(rightPoint.x, rightPoint.y, rightPoint.z);
-
-            let color = (idx > 10 && idx < 24) ? [0.4, 0.2, 0.2] : [0.25, 0.25, 0.25];
-            colors.push(...color, ...color);
-
-            if (i < NODE_COUNT) {
-                let currRow = i * 2;
-                let nextRow = (i + 1) * 2;
-                indices.push(currRow, currRow + 1, nextRow);
-                indices.push(currRow + 1, nextRow + 1, nextRow);
-            }
+        const wallHeight = 4;
+        const pts = [];
+        for (let i = 0; i < NODE_COUNT; i++) {
+            pts.push(npcPathNodes[i]);
         }
+        const curve = new THREE.CatmullRomCurve3(pts);
+        curve.closed = true;
 
-        roadGeometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-        roadGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-        roadGeometry.setIndex(indices);
-        roadGeometry.computeVertexNormals();
-
-        const roadMaterial = new THREE.MeshStandardMaterial({
-            vertexColors: true,
-            roughness: 0.8
+        // 元の index (2).html で使われていた、チューブ型の高低差立体コースを生成
+        const trackGeometry = new THREE.TubeGeometry(curve, 120, roadWidth / 2, 8, true);
+        const trackMaterial = new THREE.MeshStandardMaterial({
+            color: 0x22222a,
+            roughness: 0.8,
+            metalness: 0.2,
+            side: THREE.DoubleSide
         });
-        const roadMesh = new THREE.Mesh(roadGeometry, roadMaterial);
-        roadMesh.receiveShadow = true;
-        scene.add(roadMesh);
+        const trackMesh = new THREE.Mesh(trackGeometry, trackMaterial);
+        trackMesh.receiveShadow = true;
+        scene.add(trackMesh);
 
         // --- コース壁・ガードレール ---
         const wallMaterial = new THREE.MeshStandardMaterial({ color: 0x3a3a44, metalness: 0.5, roughness: 0.5 });
@@ -614,7 +590,7 @@
                 <div style="color: #fff; font-size: 32px; text-shadow: 2px 2px 5px #000; text-align: center;">
                     🏁 FINISH! 🏁<br>
                     Total Time: ${totalTime}s<br>
-                    <span style="font-size: 16px; color: #888;">Ctrl + Rキーでもう一度遊べます</span>
+                    <span style="font-size: 16px; color: #888;">Ctrl + Rキー（またはリロード）でもう一度遊べます</span>
                 </div>
             `;
             let div = document.createElement('div');
