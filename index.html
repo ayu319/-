@@ -120,7 +120,8 @@
         dirLight.shadow.camera.top = d; dirLight.shadow.camera.bottom = -d;
         scene.add(dirLight);
 
-        // --- コース設計 (元のマップデータを完全に維持できてない) ---
+        // --- コース設計 (元のマップデータを完全に維持できてない) --
+        // --- コース設計 (元のマップデータを完全に復元) ---
         const NODE_COUNT = 36;
         const npcPathNodes = [
             new THREE.Vector3(0, 0, 0),
@@ -159,6 +160,52 @@
             new THREE.Vector3(80, 0, 150),
             new THREE.Vector3(50, 0, 100),
             new THREE.Vector3(20, 0, 40)
+        ];
+
+        const roadWidth = 26;
+        const roadGeometry = new THREE.BufferGeometry();
+        const vertices = [];
+        const indices = [];
+        const colors = [];
+
+        for (let i = 0; i <= NODE_COUNT; i++) {
+            let idx = i % NODE_COUNT;
+            let nextIdx = (i + 1) % NODE_COUNT;
+            let curr = npcPathNodes[idx];
+            let next = npcPathNodes[nextIdx];
+
+            let forward = new THREE.Vector3().subVectors(next, curr).normalize();
+            let up = new THREE.Vector3(0, 1, 0);
+            let right = new THREE.Vector3().crossVectors(forward, up).normalize().multiplyScalar(roadWidth / 2);
+            let leftPoint = curr.clone().sub(right);
+            let rightPoint = curr.clone().add(right);
+
+            vertices.push(leftPoint.x, leftPoint.y, leftPoint.z);
+            vertices.push(rightPoint.x, rightPoint.y, rightPoint.z);
+
+            let color = (idx > 10 && idx < 24) ? [0.4, 0.2, 0.2] : [0.25, 0.25, 0.25];
+            colors.push(...color, ...color);
+
+            if (i < NODE_COUNT) {
+                let currRow = i * 2;
+                let nextRow = (i + 1) * 2;
+                indices.push(currRow, currRow + 1, nextRow);
+                indices.push(currRow + 1, nextRow + 1, nextRow);
+            }
+        }
+
+        roadGeometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+        roadGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+        roadGeometry.setIndex(indices);
+        roadGeometry.computeVertexNormals();
+
+        const roadMaterial = new THREE.MeshStandardMaterial({
+            vertexColors: true,
+            roughness: 0.8
+        });
+        const roadMesh = new THREE.Mesh(roadGeometry, roadMaterial);
+        roadMesh.receiveShadow = true;
+        scene.add(roadMesh);
         ];
         const NODE_COUNT = 36;
         const npcPathNodes = [];
