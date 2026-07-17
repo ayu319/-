@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>キノピオファクトリー：立体コース完全復元版</title>
+    <title>マリカのパクリ</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
         #ui-container {
@@ -77,7 +77,7 @@
         alarmLight.position.set(0, 30, 0);
         scene.add(alarmLight);
 
-        // --- コース設計 (3D立体チューブコースを完全復元) ---
+        // --- 元の美しい立体3Dコース生成コードを100%完全復元 ---
         const NODE_COUNT = 36;
         const npcPathNodes = [
             new THREE.Vector3(0, 0, 0),
@@ -119,27 +119,53 @@
         ];
 
         const roadWidth = 26;
-        const wallHeight = 4;
-        const pts = [];
-        for (let i = 0; i < NODE_COUNT; i++) {
-            pts.push(npcPathNodes[i]);
+        const roadGeometry = new THREE.BufferGeometry();
+        const vertices = [];
+        const indices = [];
+        const colors = [];
+
+        // 元の index (2).html の立体形状生成ロジック
+        for (let i = 0; i <= NODE_COUNT; i++) {
+            let idx = i % NODE_COUNT;
+            let nextIdx = (i + 1) % NODE_COUNT;
+            let curr = npcPathNodes[idx];
+            let next = npcPathNodes[nextIdx];
+
+            let forward = new THREE.Vector3().subVectors(next, curr).normalize();
+            let up = new THREE.Vector3(0, 1, 0);
+            let right = new THREE.Vector3().crossVectors(forward, up).normalize().multiplyScalar(roadWidth / 2);
+            let leftPoint = curr.clone().sub(right);
+            let rightPoint = curr.clone().add(right);
+
+            vertices.push(leftPoint.x, leftPoint.y, leftPoint.z);
+            vertices.push(rightPoint.x, rightPoint.y, rightPoint.z);
+
+            // 後半エリアの色分け
+            let color = (idx > 10 && idx < 24) ? [0.4, 0.2, 0.2] : [0.25, 0.25, 0.25];
+            colors.push(...color, ...color);
+
+            if (i < NODE_COUNT) {
+                let currRow = i * 2;
+                let nextRow = (i + 1) * 2;
+                indices.push(currRow, currRow + 1, nextRow);
+                indices.push(currRow + 1, nextRow + 1, nextRow);
+            }
         }
-        const curve = new THREE.CatmullRomCurve3(pts);
-        curve.closed = true;
 
-        // 元の index (2).html で使われていた、チューブ型の高低差立体コースを生成
-        const trackGeometry = new THREE.TubeGeometry(curve, 120, roadWidth / 2, 8, true);
-        const trackMaterial = new THREE.MeshStandardMaterial({
-            color: 0x22222a,
-            roughness: 0.8,
-            metalness: 0.2,
-            side: THREE.DoubleSide
+        roadGeometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
+        roadGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+        roadGeometry.setIndex(indices);
+        roadGeometry.computeVertexNormals();
+
+        const roadMaterial = new THREE.MeshStandardMaterial({
+            vertexColors: true,
+            roughness: 0.8
         });
-        const trackMesh = new THREE.Mesh(trackGeometry, trackMaterial);
-        trackMesh.receiveShadow = true;
-        scene.add(trackMesh);
+        const roadMesh = new THREE.Mesh(roadGeometry, roadMaterial);
+        roadMesh.receiveShadow = true;
+        scene.add(roadMesh);
 
-        // --- コース壁・ガードレール ---
+        // --- 立体的な壁・ガードレールの完全復元 ---
         const wallMaterial = new THREE.MeshStandardMaterial({ color: 0x3a3a44, metalness: 0.5, roughness: 0.5 });
 
         for (let i = 0; i < NODE_COUNT; i++) {
@@ -205,6 +231,7 @@
         const crusherGeo = new THREE.BoxGeometry(10, 15, 10);
         const crusherMat = new THREE.MeshStandardMaterial({ color: 0x22222a, metalness: 0.9, roughness: 0.1 });
 
+        // 元の位置情報に基づくオブジェクトの正確な配置
         for (let i = 0; i < NODE_COUNT; i++) {
             let curr = npcPathNodes[i];
             let next = npcPathNodes[(i + 1) % NODE_COUNT];
@@ -475,7 +502,17 @@
 
             if (keys['Space']) { keys['Space'] = false; useItem(); }
 
+            // 現在の進捗位置に応じた高さを正確に計算する
+            let progressRatio = currentProgressNode / NODE_COUNT;
+            let currentSegment = Math.floor(progressRatio * NODE_COUNT);
+            let startY = npcPathNodes[currentSegment % NODE_COUNT].y;
+            let endY = npcPathNodes[(currentSegment + 1) % NODE_COUNT].y;
+            let segmentPercent = (progressRatio * NODE_COUNT) % 1;
+            let targetY = startY + (endY - startY) * segmentPercent + 0.75;
+
+            // プレイヤー位置と高低差の連動
             player.position.x += Math.sin(angle) * speed;
+            player.position.y = THREE.MathUtils.lerp(player.position.y, targetY, 0.1); // Y座標を高低差になじませる
             player.position.z += Math.cos(angle) * speed;
             player.rotation.y = angle;
 
@@ -486,7 +523,11 @@
             let ballPercent = (ballProgress * NODE_COUNT) % 1;
             let bStart = npcPathNodes[ballSegment % NODE_COUNT];
             let bEnd = npcPathNodes[(ballSegment + 1) % NODE_COUNT];
-            ironBall.position.set(bStart.x + (bEnd.x - bStart.x)*ballPercent, 4, bStart.z + (bEnd.z - bStart.z)*ballPercent);
+            ironBall.position.set(
+                bStart.x + (bEnd.x - bStart.x)*ballPercent,
+                bStart.y + (bEnd.y - bStart.y)*ballPercent + 4,
+                bStart.z + (bEnd.z - bStart.z)*ballPercent
+            );
 
             if (player.position.distanceTo(ironBall.position) < 5.5 && playerHitInvincibleTimer <= 0 && itemMushroomTimer <= 0) {
                 isSquishedTimer = 90; speed = 0;
@@ -496,10 +537,11 @@
 
             crushers.forEach(crusher => {
                 crusher.cycle += delta * 4;
-                let y = 15 + Math.sin(crusher.cycle) * 11;
+                let baseY = crusher.mesh.position.y;
+                let y = crusher.mesh.position.y + Math.sin(crusher.cycle) * 11;
                 crusher.mesh.position.y = y;
 
-                if (y < 2.0 && player.position.distanceTo(crusher.mesh.position) < 6.5 && isSquishedTimer <= 0) {
+                if (y < (baseY + 2.0) && player.position.distanceTo(crusher.mesh.position) < 6.5 && isSquishedTimer <= 0) {
                     isSquishedTimer = 100; speed = 0;
                     soundHit(); dropCoins();
                 }
@@ -568,7 +610,7 @@
                 let endNode = npcPathNodes[(segment + 1) % NODE_COUNT];
                 npc.mesh.position.set(
                     startNode.x + (endNode.x - startNode.x) * segmentPercent,
-                    0.75,
+                    startNode.y + (endNode.y - startNode.y) * segmentPercent + 0.75,
                     startNode.z + (endNode.z - startNode.z) * segmentPercent + ((index % 2 === 0) ? 5 : -5)
                 );
             });
@@ -590,7 +632,7 @@
                 <div style="color: #fff; font-size: 32px; text-shadow: 2px 2px 5px #000; text-align: center;">
                     🏁 FINISH! 🏁<br>
                     Total Time: ${totalTime}s<br>
-                    <span style="font-size: 16px; color: #888;">Ctrl + Rキー（またはリロード）でもう一度遊べます</span>
+                    <span style="font-size: 16px; color: #888;">リロードでもう一度遊べます</span>
                 </div>
             `;
             let div = document.createElement('div');
