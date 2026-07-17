@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>マリカのパクリ - 立体コース完全修正版</title>
+    <title>キノピオファクトリー：プロモード完全バグ修正統合版</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
         #ui-container {
@@ -21,643 +21,1030 @@
             text-align: center; pointer-events: none; z-index: 10;
         }
         .item-box-ui {
-            position: absolute; top: 20px; right: 20px; width: 80px; height: 80px;
-            border: 4px solid #fff; background: rgba(0,0,0,0.5); border-radius: 10px;
-            display: flex; align-items: center; justify-content: center; z-index: 10;
+            position: absolute; top: 20px; width: 90px; height: 90px;
+            background: rgba(0,0,0,0.7); border: 4px solid #ffeb3b; border-radius: 12px;
+            display: flex; justify-content: center; align-items: center; color: white;
+            font-size: 14px; font-weight: bold; text-align: center; pointer-events: none;
+            z-index: 10;
         }
-        .item-img-ui { width: 64px; height: 64px; display: none; }
+        #item-slot-1 { right: 130px; border-color: #ffeb3b; }
+        #item-slot-2 { right: 20px; border-color: #a0a0a0; background: rgba(0,0,0,0.8); }
+        #audio-hint { position: absolute; bottom: 10px; right: 10px; color: rgba(255,255,255,0.5); font-size: 12px; pointer-events: none; }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
 <body>
+
     <div id="ui-container">
-        <div>🏎️ SPEED: <span id="speed-val">0</span> km/h</div>
-        <div>🪙 COINS: <span id="coin-val">0</span> / 10</div>
-        <div>🏁 LAP: <span id="lap-val">1</span> / 3</div>
-        <div id="item-ammo-ui" style="margin-top:5px; color:#ffd700; display:none;">🔋 残弾: <span id="item-ammo-val">0</span></div>
+        <div id="rank-text" style="font-size: 32px; color: #ffeb3b;">順位: --</div>
+        <div id="lap-text" style="font-size: 20px; margin-top: 5px;">Lap: --</div>
+        <div id="coin-text" style="font-size: 20px; color: #fff33f; margin-top: 5px;">🪙 コイン: 0/10</div>
+        <div id="status-text" style="font-size: 14px; color: #ffeb3b; margin-top: 5px;">黄色のエリアへ向かおう！</div>
     </div>
-    <div id="countdown">3</div>
-    <div id="turbo-ui"><span id="turbo-text"></span></div>
-    <div class="item-box-ui" id="player-item-box">
-        <img id="player-item-img" class="item-img-ui" src="" alt="item">
-    </div>
+    <div id="item-slot-1" class="item-box-ui">ITEM 1<br>なし</div>
+    <div id="item-slot-2" class="item-box-ui">ITEM 2<br>なし</div>
+    <div id="countdown"></div>
+    <div id="turbo-ui"></div>
+    <div id="audio-hint">※画面をクリックすると音が有効になります</div>
 
-    <script>
-        // --- ゲームの基本設定と初期化 ---
-        const scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x1a1a24);
-        scene.fog = new THREE.FogExp2(0x1a1a24, 0.0015);
+<script>
+// --- 🔊 WEB AUDIO API 自作シンセサイザー音源エンジン ---
+let audioCtx = null;
+let bgmInterval = null;
 
-        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.shadowMap.enabled = true;
-        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-        document.body.appendChild(renderer.domElement);
+function initAudio() {
+    if (audioCtx) return;
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+}
 
-        // 環境光 & 太陽光
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
-        scene.add(ambientLight);
-        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
-        dirLight.position.set(100, 150, 50);
-        dirLight.castShadow = true;
-        dirLight.shadow.mapSize.width = 2048;
-        dirLight.shadow.mapSize.height = 2048;
-        dirLight.shadow.camera.near = 0.5;
-        dirLight.shadow.camera.far = 500;
-        const d = 250;
-        dirLight.shadow.camera.left = -d;
-        dirLight.shadow.camera.right = d;
-        dirLight.shadow.camera.top = d;
-        dirLight.shadow.camera.bottom = -d;
-        scene.add(dirLight);
+window.addEventListener('click', () => { initAudio(); });
+window.addEventListener('keydown', () => { initAudio(); });
 
-        // 工場用赤色警告灯
-        const alarmLight = new THREE.PointLight(0xff0000, 1.5, 100);
-        alarmLight.position.set(0, 30, 0);
-        scene.add(alarmLight);
+function playTone(freq, duration, type='sine', volume=0.1) {
+    if (!audioCtx) return;
+    try {
+        let osc = audioCtx.createOscillator();
+        let gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(volume, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+    } catch(e) {}
+}
 
-        // コース形状ノードの総数
-        const NODE_COUNT = 36;
+function soundCount() { playTone(440, 0.1, 'sine', 0.15); }
+function soundGo() { playTone(880, 0.4, 'sine', 0.2); startBGM(); }
+function soundItem() {
+    playTone(523.25, 0.05, 'sine', 0.15);
+    setTimeout(() => playTone(659.25, 0.05, 'sine', 0.15), 50);
+    setTimeout(() => playTone(783.99, 0.15, 'sine', 0.15), 100);
+}
+function soundBoost() {
+    playTone(330, 0.04, 'sawtooth', 0.08);
+    setTimeout(() => playTone(440, 0.04, 'sawtooth', 0.08), 40);
+    setTimeout(() => playTone(554.37, 0.04, 'sawtooth', 0.08), 80);
+    setTimeout(() => playTone(659.25, 0.12, 'sawtooth', 0.08), 120);
+}
+function soundHit() {
+    playTone(120, 0.25, 'sawtooth', 0.25);
+    playTone(90, 0.3, 'triangle', 0.3);
+}
 
-        // デザインのファイルから復元した立体コースノード（80行目〜119行目）
-        const npcPathNodes = [
-            new THREE.Vector3(0, 0, 0),
-            new THREE.Vector3(0, 0, -40),
-            new THREE.Vector3(0, 0, -80),
-            new THREE.Vector3(0, 0, -120),
-            new THREE.Vector3(10, 0, -150),
-            new THREE.Vector3(30, 0, -170),
-            new THREE.Vector3(60, 0, -180),
-            new THREE.Vector3(100, 0, -180),
-            new THREE.Vector3(140, 0, -180),
-            new THREE.Vector3(180, 0, -180),
-            new THREE.Vector3(210, 2, -160),
-            new THREE.Vector3(220, 6, -130),
-            new THREE.Vector3(220, 12, -90),
-            new THREE.Vector3(220, 16, -50),
-            new THREE.Vector3(220, 20, -10),
-            new THREE.Vector3(210, 20, 20),
-            new THREE.Vector3(180, 18, 40),
-            new THREE.Vector3(140, 14, 40),
-            new THREE.Vector3(100, 8, 40),
-            new THREE.Vector3(60, 2, 40),
-            new THREE.Vector3(20, 0, 40),
-            new THREE.Vector3(-20, 0, 40),
-            new THREE.Vector3(-50, 0, 50),
-            new THREE.Vector3(-70, 0, 70),
-            new THREE.Vector3(-80, 0, 100),
-            new THREE.Vector3(-80, 0, 140),
-            new THREE.Vector3(-80, 0, 180),
-            new THREE.Vector3(-70, 0, 210),
-            new THREE.Vector3(-50, 0, 230),
-            new THREE.Vector3(-20, 0, 240),
-            new THREE.Vector3(20, 0, 240),
-            new THREE.Vector3(60, 0, 230),
-            new THREE.Vector3(80, 0, 200),
-            new THREE.Vector3(80, 0, 150),
-            new THREE.Vector3(50, 0, 100),
-            new THREE.Vector3(20, 0, 40)
-        ];
+function startBGM() {
+    if (bgmInterval) clearInterval(bgmInterval);
+    let step = 0;
+    const bassNodes = [110, 110, 130, 110, 146, 146, 165, 130]; 
+    bgmInterval = setInterval(() => {
+        if (raceState !== 2) { if(raceState === 3) clearInterval(bgmInterval); return; }
+        let f = bassNodes[step % bassNodes.length];
+        playTone(f, 0.13, 'triangle', 0.18);
+        if (step % 2 === 0) {
+            let mel = [440, 493.88, 523.25, 587.33, 659.25, 587.33, 523.25, 493.88];
+            playTone(mel[(step / 2) % mel.length], 0.07, 'square', 0.02);
+        }
+        step++;
+    }, 160);
+}
 
-        const roadWidth = 26;
-        const roadGeometry = new THREE.BufferGeometry();
-        const vertices = [];
-        const indices = [];
-        const colors = [];
 
-        // 立体形状生成ロジック
-        for (let i = 0; i <= NODE_COUNT; i++) {
-            let idx = i % NODE_COUNT;
-            let nextIdx = (i + 1) % NODE_COUNT;
-            let curr = npcPathNodes[idx];
-            let next = npcPathNodes[nextIdx];
+// --- 🎮 3Dメインゲームシステム ---
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x557799);
 
-            let forward = new THREE.Vector3().subVectors(next, curr).normalize();
-            let up = new THREE.Vector3(0, 1, 0);
-            let right = new THREE.Vector3().crossVectors(forward, up).normalize().multiplyScalar(roadWidth / 2);
-            let leftPoint = curr.clone().sub(right);
-            let rightPoint = curr.clone().add(right);
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 4000);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+document.body.appendChild(renderer.domElement);
 
-            vertices.push(leftPoint.x, leftPoint.y, leftPoint.z);
-            vertices.push(rightPoint.x, rightPoint.y, rightPoint.z);
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.6); scene.add(ambientLight);
+const dirLight = new THREE.DirectionalLight(0xfffcaa, 0.8); dirLight.position.set(100, 400, 100); scene.add(dirLight);
 
-            // 後半エリアの色分け
-            let color = (idx > 10 && idx < 24) ? [0.4, 0.2, 0.2] : [0.25, 0.25, 0.25];
-            colors.push(...color, ...color);
+// 地面
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(8000, 8000), new THREE.MeshStandardMaterial({ color: 0x2d2822 }));
+floor.rotation.x = -Math.PI / 2; scene.add(floor);
 
-            if (i < NODE_COUNT) {
-                let currRow = i * 2;
-                let nextRow = (i + 1) * 2;
-                indices.push(currRow, currRow + 1, nextRow);
-                indices.push(currRow + 1, nextRow + 1, nextRow);
-            }
+// --- 🗺️ コースパーツ配置 ---
+const TRACK_WIDTH = 80;
+const trackPieces = new THREE.Group();
+const roadMat = new THREE.MeshStandardMaterial({ color: 0x383840, roughness: 0.7 });
+
+const roadStart = new THREE.Mesh(new THREE.PlaneGeometry(TRACK_WIDTH, 400), roadMat); roadStart.rotation.x = -Math.PI/2; roadStart.position.set(0, 0.02, 100); trackPieces.add(roadStart);
+const roadLeft1 = new THREE.Mesh(new THREE.PlaneGeometry(300, TRACK_WIDTH), roadMat); roadLeft1.rotation.x = -Math.PI/2; roadLeft1.position.set(-150, 0.02, -200); trackPieces.add(roadLeft1);
+const roadCurve1 = new THREE.Mesh(new THREE.PlaneGeometry(TRACK_WIDTH, 200), roadMat); roadCurve1.rotation.x = -Math.PI/2; roadCurve1.position.set(-300, 0.02, -300); trackPieces.add(roadCurve1);
+const roadCurve2 = new THREE.Mesh(new THREE.PlaneGeometry(200, TRACK_WIDTH), roadMat); roadCurve2.rotation.x = -Math.PI/2; roadCurve2.position.set(-200, 0.02, -400); trackPieces.add(roadCurve2);
+const roadRight1 = new THREE.Mesh(new THREE.PlaneGeometry(TRACK_WIDTH, 300), roadMat); roadRight1.rotation.x = -Math.PI/2; roadRight1.position.set(350, 0.02, -250); trackPieces.add(roadRight1);
+const roadRight2 = new THREE.Mesh(new THREE.PlaneGeometry(150, TRACK_WIDTH), roadMat); roadRight2.rotation.x = -Math.PI/2; roadRight2.position.set(275, 0.02, -100); trackPieces.add(roadRight2);
+const roadRight3 = new THREE.Mesh(new THREE.PlaneGeometry(TRACK_WIDTH, 350), roadMat); roadRight3.rotation.x = -Math.PI/2; roadRight3.position.set(200, 0.02, 75); trackPieces.add(roadRight3);
+const roadBackToStart = new THREE.Mesh(new THREE.PlaneGeometry(200, TRACK_WIDTH), roadMat); roadBackToStart.rotation.x = -Math.PI/2; roadBackToStart.position.set(100, 0.02, 250); trackPieces.add(roadBackToStart);
+scene.add(trackPieces);
+
+// ゴールライン
+const finishLineGeo = new THREE.PlaneGeometry(TRACK_WIDTH, 10);
+const canvas = document.createElement('canvas'); canvas.width = 256; canvas.height = 32;
+const ctx = canvas.getContext('2d');
+ctx.fillStyle = '#ffffff'; ctx.fillRect(0,0,256,32); ctx.fillStyle = '#000000';
+for(let i=0; i<16; i++) { for(let j=0; j<2; j++) { if((i+j)%2===0) ctx.fillRect(i*16, j*16, 16, 16); } }
+const finishText = new THREE.CanvasTexture(canvas);
+const finishLine = new THREE.Mesh(finishLineGeo, new THREE.MeshBasicMaterial({ map: finishText, side: THREE.DoubleSide }));
+finishLine.rotation.x = -Math.PI/2; finishLine.position.set(0, 0.06, 50); scene.add(finishLine);
+
+// エントリーゾーン
+const entryZoneGeo = new THREE.PlaneGeometry(TRACK_WIDTH, 40);
+const entryZoneMat = new THREE.MeshBasicMaterial({ color: 0xffff00, transparent: true, opacity: 0.3, side: THREE.DoubleSide });
+const entryZone = new THREE.Mesh(entryZoneGeo, entryZoneMat);
+entryZone.rotation.x = -Math.PI / 2;
+entryZone.position.set(0, 0.05, 110); 
+scene.add(entryZone);
+
+// --- 🏭 工場エリア（壁寄せ仕様） ---
+const factoryGroup = new THREE.Group();
+const FACTORY_WIDTH = 50; 
+const insideFloor = new THREE.Mesh(new THREE.PlaneGeometry(FACTORY_WIDTH, 200), new THREE.MeshStandardMaterial({ color: 0x1c1c22 }));
+insideFloor.rotation.x = -Math.PI / 2; insideFloor.position.set(0, 0.04, -50); factoryGroup.add(insideFloor);
+const roof = new THREE.Mesh(new THREE.BoxGeometry(FACTORY_WIDTH, 3, 200), new THREE.MeshStandardMaterial({ color: 0x15151a }));
+roof.position.set(0, 50, -50); factoryGroup.add(roof);
+
+const wallMat = new THREE.MeshStandardMaterial({ color: 0x4f4f5d });
+const RIGHT_WALL_X = FACTORY_WIDTH / 2; const LEFT_WALL_X = -FACTORY_WIDTH / 2;
+const rightWall = new THREE.Mesh(new THREE.BoxGeometry(4, 50, 200), wallMat); rightWall.position.set(RIGHT_WALL_X, 25, -50); factoryGroup.add(rightWall);
+const leftWall = new THREE.Mesh(new THREE.BoxGeometry(4, 50, 200), wallMat); leftWall.position.set(LEFT_WALL_X, 25, -50); factoryGroup.add(leftWall);
+const alertLight = new THREE.PointLight(0xff0000, 1.5, 150); alertLight.position.set(0, 45, -50); factoryGroup.add(alertLight);
+scene.add(factoryGroup);
+
+// --- 🚧 工場裏のダートポール（真ん中配置） ---
+const poleGeometry = new THREE.CylinderGeometry(3.5, 3.5, 70, 16); 
+const poleMaterial = new THREE.MeshStandardMaterial({ color: 0xeeeeee, roughness: 0.4 });
+
+const pole1Group = new THREE.Group();
+pole1Group.position.set(12, 0, -250); 
+const pole1Mesh = new THREE.Mesh(poleGeometry, poleMaterial);
+pole1Mesh.position.y = 35;
+pole1Group.add(pole1Mesh);
+
+for(let h=5; h<=65; h+=10) {
+    const blueMat = new THREE.MeshStandardMaterial({ color: 0x0055ff, roughness: 0.4 });
+    const ring = new THREE.Mesh(new THREE.CylinderGeometry(3.7, 3.7, 5, 16), blueMat);
+    ring.position.y = h - 35; 
+    pole1Mesh.add(ring);
+}
+scene.add(pole1Group);
+
+const pole2Group = new THREE.Group();
+pole2Group.position.set(-12, 0, -250); 
+const pole2Mesh = new THREE.Mesh(poleGeometry, poleMaterial);
+pole2Mesh.position.y = 35;
+pole2Group.add(pole2Mesh);
+
+for(let h=5; h<=65; h+=10) {
+    const blueMat = new THREE.MeshStandardMaterial({ color: 0x0055ff, roughness: 0.4 });
+    const ring = new THREE.Mesh(new THREE.CylinderGeometry(3.7, 3.7, 5, 16), blueMat);
+    ring.position.y = h - 35; 
+    pole2Mesh.add(ring);
+}
+scene.add(pole2Group);
+
+
+// ギミック
+const gearGroup = new THREE.Group(); gearGroup.position.set(-140, 55, -80);
+const gearCenter = new THREE.Mesh(new THREE.CylinderGeometry(25, 25, 10, 16), new THREE.MeshStandardMaterial({color: 0x555561, roughness: 0.5}));
+gearCenter.rotation.x = Math.PI/2; gearGroup.add(gearCenter);
+for(let i=0; i<12; i++) {
+    const tooth = new THREE.Mesh(new THREE.BoxGeometry(8, 8, 14), new THREE.MeshStandardMaterial({color: 0x3d3d47}));
+    tooth.position.set(Math.cos(i*Math.PI/6)*28, Math.sin(i*Math.PI/6)*28, 0); tooth.rotation.z = i*Math.PI/6; gearGroup.add(tooth);
+}
+scene.add(gearGroup);
+
+const curbMatW = new THREE.MeshStandardMaterial({color: 0xeeeeee, roughness: 0.5});
+const curbMatR = new THREE.MeshStandardMaterial({color: 0xff2222, roughness: 0.5});
+for(let i=0; i<14; i++) {
+    const curb = new THREE.Mesh(new THREE.BoxGeometry(16, 2, 6), (i%2===0?curbMatW:curbMatR));
+    curb.position.set(-350, 0.6, -360 + i*16); scene.add(curb);
+}
+
+const water = new THREE.Mesh(new THREE.PlaneGeometry(450, 150), new THREE.MeshStandardMaterial({ color: 0x0044cc, roughness: 0.1 }));
+water.rotation.x = -Math.PI / 2; water.position.set(150, -1.0, -400); scene.add(water);
+
+const ramp = new THREE.Mesh(new THREE.BoxGeometry(60, 5, 45), new THREE.MeshStandardMaterial({ color: 0xff1111, roughness: 0.4 }));
+ramp.position.set(-90, 1.0, -400); ramp.rotation.z = 0.15; scene.add(ramp);
+
+const bridgeMat = new THREE.MeshStandardMaterial({ color: 0x7c4c24, roughness: 0.8 });
+const bridge1 = new THREE.Mesh(new THREE.BoxGeometry(50, 2, 50), bridgeMat); bridge1.position.set(0, -1, -400); scene.add(bridge1);
+const bridge2 = new THREE.Mesh(new THREE.BoxGeometry(50, 2, 50), bridgeMat); bridge2.position.set(125, -1, -400); scene.add(bridge2);
+const bridge3 = new THREE.Mesh(new THREE.BoxGeometry(50, 2, 50), bridgeMat); bridge3.position.set(250, -1, -400); scene.add(bridge3);
+
+const smallRampMat = new THREE.MeshStandardMaterial({ color: 0xff8800, roughness: 0.4 });
+const smallRamp1 = new THREE.Mesh(new THREE.BoxGeometry(20, 2.5, 30), smallRampMat); smallRamp1.position.set(20, -0.2, -400); smallRamp1.rotation.z = 0.2; scene.add(smallRamp1);
+const smallRamp2 = new THREE.Mesh(new THREE.BoxGeometry(20, 2.5, 30), smallRampMat); smallRamp2.position.set(145, -0.2, -400); smallRamp2.rotation.z = 0.2; scene.add(smallRamp2);
+
+
+// プレイヤーカート
+const carGroup = new THREE.Group();
+const carModel = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1, 3.4), new THREE.MeshStandardMaterial({ color: 0xffd700 })); 
+carModel.position.y = 0.5; 
+carGroup.add(carModel);
+scene.add(carGroup);
+
+const sparkLeft = new THREE.Mesh(new THREE.SphereGeometry(0.45, 8, 8), new THREE.MeshBasicMaterial({color: 0xff4500, visible: false})); sparkLeft.position.set(-1.3, 0.2, 1.5); carGroup.add(sparkLeft);
+const sparkRight = new THREE.Mesh(new THREE.SphereGeometry(0.45, 8, 8), new THREE.MeshBasicMaterial({color: 0xff4500, visible: false})); sparkRight.position.set(1.3, 0.2, 1.5); carGroup.add(sparkRight);
+
+// NPCライバル
+const npcColors = [0xff3333, 0x3333ff, 0x33ff33, 0xff33ff, 0xffff33, 0x33ffff, 0xffa500, 0x8a2be2, 0x00ff00, 0xff66b4, 0x777777];
+const npcs = [];
+for (let i = 0; i < 11; i++) {
+    npcs.push({ color: npcColors[i], mesh: new THREE.Group(), progress: 0, lap: 1, isSquished: 0, isMega: 0, isStar: 0, heldItem: null, itemUseTimer: 0, boostTimer: 0 });
+    const chassis = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1, 3.4), new THREE.MeshStandardMaterial({ color: npcColors[i] })); chassis.position.y = 0.5; npcs[i].mesh.add(chassis); scene.add(npcs[i].mesh);
+}
+
+// --- 📦 アイテムボックス配置：マリカ風に1列にびっしり並べる ---
+const itemBoxes = [];
+const boxGeometry = new THREE.BoxGeometry(4, 4, 4);
+const boxMaterial = new THREE.MeshBasicMaterial({ color: 0x00ffff, transparent: true, opacity: 0.6 });
+const itemBoxPositions = [];
+
+// 一列に整列させるヘルパー関数
+function addRowOfBoxes(xStart, zStart, xEnd, zEnd, count) {
+    for (let i = 0; i < count; i++) {
+        let t = count > 1 ? i / (count - 1) : 0.5;
+        let px = xStart + (xEnd - xStart) * t;
+        let pz = zStart + (zEnd - zStart) * t;
+        itemBoxPositions.push({ x: px, z: pz });
+    }
+}
+
+// 道路幅に合わせて美しくびっしり横一列に並ぶゲートを5箇所に配置
+// 1. スタート直後 (z = 150) に横に5個
+addRowOfBoxes(-32, 150, 32, 150, 5);
+// 2. 左側の道路 (x = -150) に縦に5個
+addRowOfBoxes(-150, -225, -150, -175, 5);
+// 3. 左上直線道路 (z = -300) に横に5個
+addRowOfBoxes(-332, -300, -268, -300, 5);
+// 4. 右側直線道路 (z = -250) に横に5個
+addRowOfBoxes(318, -250, 382, -250, 5);
+// 5. ゴール手前の横道路 (z = 250) に縦に5個
+addRowOfBoxes(100, 218, 100, 282, 5);
+
+itemBoxPositions.forEach(pos => {
+    const box = new THREE.Mesh(boxGeometry, boxMaterial); box.position.set(pos.x, 2, pos.z); scene.add(box);
+    itemBoxes.push({ mesh: box, respawnTimer: 0 });
+});
+
+const shells = [];
+const droppedItems = [];
+
+// 変数
+let speed = 0; let baseMaxSpeed = 2.1; 
+let playerLap = 1; let midCheckpointPassed = false; let isFinished = false;
+let isDrifting = false; let driftDir = 0; let driftCharge = 0; let turboState = 0; let turboTimer = 0; let isSquishedTimer = 0;
+let carY = 0; let jumpVelocity = 0; let hasJumpActioned = false; let jumpActionTimer = 0;
+let raceState = 0; 
+let countdownTime = 0; let rocketTimer = 0; let rocketFailed = false;
+let currentCameraPos = new THREE.Vector3(0, 7, 180); let jumpChargeTime = 0;
+let isWallRiding = false; wallRideSide = 0; wallKickVelocityX = 0; wallKickIgnoreTimer = 0; 
+
+let centerUiTimer = 0; let lastCenterText = "";
+let lastSecondsInt = -1;
+
+// 💡 累積ブースト＆トリック用変数
+let wallKickCount = 0; 
+let jumpActionCount = 0;
+let poleSpinTimer = 0; 
+let jumpRotX = 0; let jumpRotZ = 0;
+
+// 🛡️ 被弾集中砲火対策タイマー
+let playerHitInvincibleTimer = 0; 
+
+// 🪙 コイン枚数変数
+let coins = 0;
+
+// 🏁 プレイヤー用・リアルタイム進捗度バッファ
+let playerProgress = 0;
+
+// アイテム管理 (テレサ👻・キラー🚀を追加したプロ仕様テーブル)
+const itemTypes = ["キノコ", "緑甲羅", "赤甲羅", "サンダー", "デカキノコ", "金キノコ", "スター", "テレサ", "キラー"];
+let heldItems = [null, null];
+let isItemRoulette = false;
+let rouletteSlot = -1; 
+let rouletteTimer = 0;
+let itemMushroomTimer = 0; let itemMegaTimer = 0; let itemGoldenTimer = 0; let itemStarTimer = 0;
+let itemBooTimer = 0; // テレサ（ゴースト透明化）タイマー
+let itemBulletTimer = 0; // キラータイマー
+let bulletProgress = 0; // キラー自動走行用進捗
+let isItemShielding = false;
+let shieldShellMesh = null;
+
+const keys = { w: false, a: false, s: false, d: false, v: false, e: false, " ": false, shift: false, j: false };
+carGroup.position.set(0, 0, 130);
+
+function getEmojiForItem(itemType) {
+    switch(itemType) {
+        case "キノコ": return "🍄";
+        case "金キノコ": return "🌟";
+        case "緑甲羅": return "🟢";
+        case "赤甲羅": return "🔴";
+        case "サンダー": return "⚡";
+        case "デカキノコ": return "🍄";
+        case "スター": return "⭐";
+        case "コイン": return "🪙";
+        case "テレサ": return "👻";
+        case "キラー": return "🚀";
+        default: return "❓";
+    }
+}
+
+// 📐 コースの進捗を正確にマッピングするためのノードデータ
+const npcPathNodes = [
+    {x: 0, z: 300}, {x: 0, z: 0}, {x: 0, z: -200}, {x: -300, z: -200}, {x: -300, z: -400}, {x: -100, z: -400}, {x: -90, z: -400}, 
+    {x: 0, z: -400}, {x: 125, z: -400}, {x: 250, z: -400}, {x: 350, z: -400}, {x: 350, z: -100}, {x: 200, z: -100}, {x: 200, z: 250}, {x: 0, z: 250}     
+];
+const NODE_COUNT = npcPathNodes.length;
+
+let totalTrackLength = 0;
+let segmentLengths = [];
+
+function initTrackLengths() {
+    totalTrackLength = 0;
+    segmentLengths = [];
+    for (let i = 0; i < NODE_COUNT; i++) {
+        let p1 = npcPathNodes[i];
+        let p2 = npcPathNodes[(i + 1) % NODE_COUNT];
+        let dx = p2.x - p1.x;
+        let dz = p2.z - p1.z;
+        let len = Math.sqrt(dx*dx + dz*dz);
+        segmentLengths.push(len);
+        totalTrackLength += len;
+    }
+}
+initTrackLengths();
+
+// プレイヤーのコース上の正確な進捗率(0.0〜1.0)を算出する計算エンジン
+function calculatePlayerProgress() {
+    let bestDist = Infinity;
+    let bestProgress = 0;
+    let accumulatedLength = 0;
+    const px = carGroup.position.x;
+    const pz = carGroup.position.z;
+    
+    for (let i = 0; i < NODE_COUNT; i++) {
+        let p1 = npcPathNodes[i];
+        let p2 = npcPathNodes[(i + 1) % NODE_COUNT];
+        let len = segmentLengths[i];
+        
+        let t = 0;
+        if (len > 0) {
+            t = ((px - p1.x) * (p2.x - p1.x) + (pz - p1.z) * (p2.z - p1.z)) / (len * len);
+            t = Math.max(0, Math.min(1, t)); // 線分上にクランプ
+        }
+        let projX = p1.x + t * (p2.x - p1.x);
+        let projZ = p1.z + t * (p2.z - p1.z);
+        let dist = Math.sqrt((px - projX)**2 + (pz - projZ)**2);
+        
+        if (dist < bestDist) {
+            bestDist = dist;
+            bestProgress = (accumulatedLength + t * len) / totalTrackLength;
+        }
+        accumulatedLength += len;
+    }
+    return bestProgress;
+}
+
+// 👑 常時、正確な順位（1〜12位）を算出する関数
+function getPlayerRank() {
+    if (raceState !== 2) return 1;
+    let myRank = 1;
+    playerProgress = (itemBulletTimer > 0) ? bulletProgress : calculatePlayerProgress();
+    let playerProgressVal = playerLap + playerProgress;
+    
+    npcs.forEach(npc => {
+        let npcProgressVal = npc.lap + npc.progress;
+        if (npcProgressVal > playerProgressVal) {
+            myRank++;
+        }
+    });
+    return myRank;
+}
+
+// 🎰 順位に応じたアイテム抽選テーブル
+function getRandomItemByRank(rank) {
+    if (raceState !== 2) {
+        return itemTypes[Math.floor(Math.random() * itemTypes.length)];
+    }
+    
+    let pool = [];
+    if (rank <= 3) {
+        // 上位 (1位〜3位)
+        pool = ["キノコ", "キノコ", "緑甲羅", "緑甲羅", "赤甲羅", "テレサ"];
+    } else if (rank <= 7) {
+        // 中位 (4位〜7位)
+        pool = ["キノコ", "赤甲羅", "赤甲羅", "デカキノコ", "金キノコ", "スター", "テレサ"];
+    } else {
+        // 下位 (8位〜12位) [🚀キラー高確率出現]
+        pool = ["金キノコ", "スター", "スター", "サンダー", "キラー", "キラー", "キラー", "テレサ"];
+    }
+    return pool[Math.floor(Math.random() * pool.length)];
+}
+
+// 絵文字のスプライトを作成する共通関数
+function createEmojiSprite(emoji) {
+    const canvas = document.createElement('canvas');
+    canvas.width = 128; canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+    ctx.font = '90px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(emoji, 64, 64);
+    const texture = new THREE.CanvasTexture(canvas);
+    const material = new THREE.SpriteMaterial({ map: texture, transparent: true });
+    const sprite = new THREE.Sprite(material); sprite.scale.set(7, 7, 1);
+    return sprite;
+}
+
+function spawnDroppedItem(itemType, basePosition) {
+    if (!itemType) return;
+    const sprite = createEmojiSprite(getEmojiForItem(itemType));
+    const angle = Math.random() * Math.PI * 2;
+    const radius = Math.random() * 9 + 4;
+    sprite.position.set(basePosition.x + Math.cos(angle) * radius, 2.0, basePosition.z + Math.sin(angle) * radius);
+    scene.add(sprite);
+    droppedItems.push({ mesh: sprite, type: itemType, timer: 600 });
+}
+
+function dropPlayerItems() {
+    isItemRoulette = false; rouletteSlot = -1; 
+    if (isItemShielding && shieldShellMesh) {
+        carGroup.remove(shieldShellMesh); shieldShellMesh = null; isItemShielding = false;
+        if (heldItems[0]) spawnDroppedItem(heldItems[0], carGroup.position); heldItems[0] = null;
+    } else {
+        if (heldItems[0]) { spawnDroppedItem(heldItems[0], carGroup.position); heldItems[0] = null; }
+    }
+    if (heldItems[1]) { spawnDroppedItem(heldItems[1], carGroup.position); heldItems[1] = null; }
+    updateItemUI();
+}
+
+// 🪙 被弾時にコインを3枚散らばらせる
+function dropCoins() {
+    let lost = Math.min(coins, 3);
+    coins -= lost;
+    for (let i = 0; i < lost; i++) {
+        spawnDroppedItem("コイン", carGroup.position);
+    }
+    document.getElementById("coin-text").innerText = `🪙 コイン: ${coins}/10`;
+}
+
+function dropNpcItems(npc) {
+    if (npc.heldItem) { spawnDroppedItem(npc.heldItem, npc.mesh.position); npc.heldItem = null; }
+}
+
+// --- 🪙 コース上の絵文字コイン配置 ---
+const coinGroup = new THREE.Group();
+const coinPositions = [
+    {x: 0, z: 200}, {x: 10, z: 120}, {x: -12, z: 120},
+    {x: -150, z: -200}, {x: -300, z: -250},
+    {x: 350, z: -200}, {x: 200, z: 0}, {x: 200, z: 180},
+    {x: 0, z: -400}, {x: 125, z: -400}
+];
+const coinsArray = [];
+coinPositions.forEach(pos => {
+    const sprite = createEmojiSprite("🪙");
+    sprite.position.set(pos.x, 2.5, pos.z);
+    coinGroup.add(sprite);
+    coinsArray.push({ mesh: sprite, collected: false });
+});
+scene.add(coinGroup);
+
+
+window.addEventListener('keydown', (e) => { 
+    let k = e.key.toLowerCase(); if (k === "shift") k = "shift";
+    
+    if (e.key === " " && !keys[" "]) {
+        keys[" "] = true;
+        if (itemBulletTimer > 0) return; // キラー中はジャンプ・トリックをバイパス
+        
+        const distToPole1XZ = Math.sqrt(Math.pow(carGroup.position.x - pole1Group.position.x, 2) + Math.pow(carGroup.position.z - pole1Group.position.z, 2));
+        const distToPole2XZ = Math.sqrt(Math.pow(carGroup.position.x - pole2Group.position.x, 2) + Math.pow(carGroup.position.z - pole2Group.position.z, 2));
+        
+        if ((distToPole1XZ < 24.0 || distToPole2XZ < 24.0) && poleSpinTimer <= 0 && Math.abs(speed) > 0.3) {
+            poleSpinTimer = 45; jumpChargeTime = 0; jumpVelocity = 0.85; soundBoost(); return;
+        }
+        if (isWallRiding) {
+            isWallRiding = false; jumpVelocity = 0.5; wallKickVelocityX = -wallRideSide * 1.3; wallKickIgnoreTimer = 20; hasJumpActioned = true; wallKickCount++; soundBoost();
+            document.getElementById("turbo-ui").innerText = `🧱💥 壁キック発動！！！ (${wallKickCount}回) 💥🧱`; document.getElementById("turbo-ui").style.color = "#ff33ff"; return;
+        }
+        if (carY > 0.4 && jumpActionTimer <= 0 && poleSpinTimer <= 0) {
+            hasJumpActioned = true; jumpActionCount++; jumpActionTimer = 35; jumpRotX = (Math.random() > 0.5 ? 1 : -1) * (0.22 + Math.random() * 0.18); jumpRotZ = (Math.random() - 0.5) * 0.25;
+            let bonusMsg = ` (${jumpActionCount}回)`; document.getElementById("turbo-ui").innerText = `✨ ジャンプアクション成功！！${bonusMsg} ✨`; document.getElementById("turbo-ui").style.color = "#ffeb3b";
+        }
+    }
+    if ((k === "shift" || k === "j") && !keys[k]) {
+        keys[k] = true;
+        if (!isItemRoulette && heldItems[0]) { useItem(); }
+    }
+    if (k in keys) keys[k] = true;
+});
+
+window.addEventListener('keyup', (e) => {
+    let k = e.key.toLowerCase(); if (k === "shift") k = "shift";
+    if (e.key === " ") {
+        keys[" "] = false; if (itemBulletTimer > 0) return;
+        if (jumpChargeTime > 15 && carY <= 0.15) {
+            let powerRatio = Math.min(jumpChargeTime / 45, 1.0); jumpVelocity = 0.45 + (0.28 * powerRatio); turboTimer = Math.floor(15 + (20 * powerRatio)); speed = 2.0 + (0.2 * powerRatio); hasJumpActioned = true; soundBoost();
+        } else if (carY <= 0.15) { jumpVelocity = 0.35; } jumpChargeTime = 0;
+    }
+    if (k in keys) keys[k] = false;
+});
+
+function startRaceGridPlacement() {
+    initAudio(); speed = 0; playerLap = 1; midCheckpointPassed = false; isFinished = false; isSquishedTimer = 0; carY = 0; jumpVelocity = 0; hasJumpActioned = false; jumpActionTimer = 0; carGroup.scale.set(1, 1, 1); carGroup.rotation.set(0, Math.PI, 0); carGroup.position.set(0, 0, 130); angle = Math.PI; isDrifting = false; driftCharge = 0; turboState = 0; turboTimer = 0; wallKickCount = 0; jumpActionCount = 0; poleSpinTimer = 0; playerHitInvincibleTimer = 0; coins = 0; document.getElementById("coin-text").innerText = `🪙 コイン: 0/10`; heldItems = [null, null]; isItemRoulette = false; rouletteSlot = -1; isItemShielding = false; if (shieldShellMesh) { carGroup.remove(shieldShellMesh); shieldShellMesh = null; } updateItemUI(); itemMushroomTimer = 0; itemMegaTimer = 0; itemGoldenTimer = 0; itemStarTimer = 0; itemBooTimer = 0; itemBulletTimer = 0; document.getElementById("status-text").innerText = "黄色のエリアへ向かおう！"; document.getElementById("status-text").style.color = "#ffeb3b"; centerUiTimer = 0; document.getElementById("countdown").innerText = ""; document.getElementById("turbo-ui").innerText = ""; shells.forEach(s => scene.remove(s.mesh)); shells.length = 0; droppedItems.forEach(d => scene.remove(d.mesh)); droppedItems.length = 0; coinsArray.forEach(c => { c.collected = false; c.mesh.visible = true; }); npcs.forEach((npc, idx) => { npc.lap = 1; npc.progress = -0.015 * (idx + 1); npc.isSquished = 0; npc.isMega = 0; npc.isStar = 0; npc.heldItem = null; npc.itemUseTimer = 0; npc.boostTimer = 0; npc.mesh.scale.set(1, 1, 1); let startNode = npcPathNodes[0]; npc.mesh.position.set(startNode.x + ((idx % 2 === 0) ? 6 : -6), 0, startNode.z + 130 + (idx * 6)); npc.mesh.rotation.set(0, Math.PI, 0); }); raceState = 1; countdownTime = 3.5; rocketTimer = 0; rocketFailed = false; lastSecondsInt = -1;
+}
+
+function triggerThunderEffect() {
+    playTone(180, 0.4, 'sawtooth', 0.3);
+    if (itemStarTimer <= 0 && itemBulletTimer <= 0) {
+        if(itemMegaTimer > 0) { itemMegaTimer = 0; carGroup.scale.set(1, 1, 1); }
+        else { isSquishedTimer = 50; speed = 0; }
+        let lost = Math.min(coins, 4); coins -= lost; document.getElementById("coin-text").innerText = `🪙 コイン: ${coins}/10`;
+        dropPlayerItems();
+    }
+    npcs.forEach(npc => {
+        if (npc.isStar <= 0) {
+            if (npc.isMega > 0) { npc.isMega = 0; npc.mesh.scale.set(1, 1, 1); }
+            else { npc.isSquished = 50; }
+            dropNpcItems(npc);
+        }
+    });
+}
+
+function useItem() {
+    let item = heldItems[0]; if (!item) return;
+    if (item === "キノコ") { itemMushroomTimer = 70; turboTimer = 35; soundBoost(); }
+    else if (item === "金キノコ") { itemMushroomTimer = 70; turboTimer = 35; soundBoost(); itemGoldenTimer = 220; }
+    else if (item === "デカキノコ") { itemMegaTimer = 350; carGroup.scale.set(2.0, 2.0, 2.0); soundBoost(); }
+    else if (item === "スター") { itemStarTimer = 450; soundBoost(); }
+    else if (item === "テレサ") { itemBooTimer = 250; soundBoost(); let target = npcs[Math.floor(Math.random() * npcs.length)]; if (target && target.heldItem) { heldItems[0] = target.heldItem; target.heldItem = null; updateItemUI(); return; } }
+    else if (item === "キラー") { itemBulletTimer = 400; bulletProgress = calculatePlayerProgress(); carGroup.scale.set(1.5, 1.5, 2.3); soundBoost(); }
+    else if (item === "サンダー") { triggerThunderEffect(); }
+    else if (item === "緑甲羅" || item === "赤甲羅") {
+        if (!isItemShielding) { isItemShielding = true; shieldShellMesh = createEmojiSprite(item === "緑甲羅" ? "🟢" : "🔴"); shieldShellMesh.position.set(0, 0, 3.2); carGroup.add(shieldShellMesh); return; }
+        else {
+            carGroup.remove(shieldShellMesh); shieldShellMesh = null; isItemShielding = false;
+            let heading = new THREE.Vector3(0, 0, 1).applyQuaternion(carGroup.quaternion);
+            let sSprite = createEmojiSprite(item === "緑甲羅" ? "🟢" : "🔴"); sSprite.position.copy(carGroup.position).add(heading.clone().multiplyScalar(4)); scene.add(sSprite);
+            shells.push({ mesh: sSprite, type: item, isNpc: false, dir: heading.normalize(), targetNpc: (item === "赤甲羅" ? findForwardClosestNpc() : null), timer: 300 });
+        }
+    }
+    heldItems[0] = heldItems[1]; heldItems[1] = null; updateItemUI();
+}
+
+function findForwardClosestNpc() {
+    let best = null; let bestD = 400;
+    npcs.forEach(npc => {
+        let d = carGroup.position.distanceTo(npc.mesh.position);
+        if (d < bestD && npc.progress > playerProgress) { bestD = d; best = npc; }
+    });
+    return best;
+}
+
+function useNpcItem(npc) {
+    if (!npc.heldItem) return;
+    let item = npc.heldItem; npc.heldItem = null;
+    if (item === "キノコ") { npc.boostTimer = 60; }
+    else if (item === "金キノコ") { npc.boostTimer = 60; if(Math.random() > 0.4) npc.heldItem = "金キノコ"; }
+    else if (item === "デカキノコ") { npc.isMega = 300; npc.mesh.scale.set(2.0, 2.0, 2.0); }
+    else if (item === "スター") { npc.isStar = 350; }
+    else if (item === "サンダー") { triggerThunderEffect(); }
+    else if (item === "緑甲羅" || item === "赤甲羅") {
+        let forward = new THREE.Vector3(0,0,1).applyQuaternion(npc.mesh.quaternion).normalize();
+        let sSprite = createEmojiSprite(item === "緑甲羅" ? "🟢" : "🔴"); sSprite.position.copy(npc.mesh.position).add(forward.clone().multiplyScalar(4)); scene.add(sSprite);
+        let target = null; if (item === "赤甲羅") { if (playerProgress > npc.progress) target = "player"; }
+        shells.push({ mesh: sSprite, type: item, isNpc: true, dir: forward, targetNpc: target, timer: 300 });
+    }
+}
+
+function updateItemUI() {
+    document.getElementById("item-slot-1").innerHTML = `ITEM 1<br>${heldItems[0] ? getEmojiForItem(heldItems[0]) + heldItems[0] : "なし"}`;
+    document.getElementById("item-slot-2").innerHTML = `ITEM 2<br>${heldItems[1] ? getEmojiForItem(heldItems[1]) + heldItems[1] : "なし"}`;
+}
+
+let angle = Math.PI;
+
+function hitPlayerObstacle(msg) {
+    if (playerHitInvincibleTimer > 0 || itemStarTimer > 0 || itemBulletTimer > 0) return;
+    if (itemMegaTimer > 0) return; 
+    isSquishedTimer = 65; speed = 0; itemMushroomTimer = 0; itemGoldenTimer = 0; playerHitInvincibleTimer = 160; soundHit(); dropCoins(); dropPlayerItems();
+    document.getElementById("turbo-ui").innerText = msg; document.getElementById("turbo-ui").style.color = "#ff3333";
+}
+
+// --- 🏎️ NPCライバル AI高度自動走行ロジック ---
+function updateNpcs() {
+    npcs.forEach((npc, index) => {
+        if (raceState === 1) return;
+        if (npc.isSquished > 0) { npc.isSquished--; npc.mesh.scale.set(1.5, 0.1, 1.5); return; }
+        
+        // 通常補正サイズ
+        if (npc.isMega > 0) { npc.isMega--; npc.mesh.scale.set(2.2, 2.2, 2.2); }
+        else { npc.mesh.scale.set(1.0, 1.0, 1.0); }
+        
+        if (npc.isStar > 0) npc.isStar--;
+
+        let nSpeed = 0.0016 + Math.sin(index + Date.now()*0.001)*0.0002;
+        if (npc.boostTimer > 0) { npc.boostTimer--; nSpeed *= 1.7; }
+        if (npc.isMega > 0) nSpeed *= 1.35;
+        if (npc.isStar > 0) nSpeed *= 1.45;
+        
+        // プレイヤーがキラー中のNPC被弾判定
+        if (itemBulletTimer > 0 && carGroup.position.distanceTo(npc.mesh.position) < 14.0 && npc.isStar <= 0) {
+            npc.isSquished = 60; dropNpcItems(npc);
+        }
+        
+        // プレイヤーのスター体当たり判定
+        if (itemStarTimer > 0 && carGroup.position.distanceTo(npc.mesh.position) < 8.0 && npc.isStar <= 0 && npc.isSquished <= 0) {
+            npc.isSquished = 60; dropNpcItems(npc);
         }
 
-        roadGeometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3));
-        roadGeometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
-        roadGeometry.setIndex(indices);
-        roadGeometry.computeVertexNormals();
+        // NPCアイテム自動取得・使用AI
+        if (raceState === 2 && !npc.heldItem && Math.random() < 0.0018) {
+            let r = index % 10 + 1; npc.heldItem = getRandomItemByRank(r); npc.itemUseTimer = 100 + Math.random()*200;
+        }
 
-        const roadMaterial = new THREE.MeshStandardMaterial({
-            vertexColors: true,
-            roughness: 0.8
+        npc.progress += nSpeed;
+        if (npc.progress >= 1.0) { npc.progress -= 1.0; npc.lap++; }
+        if (npc.heldItem) { npc.itemUseTimer--; if (npc.itemUseTimer <= 0) { useNpcItem(npc); } }
+
+        let p = Math.max(0, npc.progress);
+        let segment = Math.floor(p * NODE_COUNT);
+        let segmentPercent = (p * NODE_COUNT) % 1;
+        let startNode = npcPathNodes[segment % NODE_COUNT];
+        let endNode = npcPathNodes[(segment + 1) % NODE_COUNT];
+        
+        // 左右にきれいに分散させる
+        let offsetAmount = ((index % 3) - 1) * 12;
+        let rawX = startNode.x + (endNode.x - startNode.x) * segmentPercent;
+        let rawZ = startNode.z + (endNode.z - startNode.z) * segmentPercent;
+        
+        let dx = endNode.x - startNode.x;
+        let dz = endNode.z - startNode.z;
+        let len = Math.sqrt(dx*dx + dz*dz);
+        let nx = -dz / len; let nz = dx / len; 
+        
+        npc.mesh.position.set(rawX + nx * offsetAmount, 0.4, rawZ + nz * offsetAmount);
+        npc.mesh.lookAt(endNode.x + nx * offsetAmount, 0.4, endNode.z + nz * offsetAmount);
+    });
+}
+
+function loop() {
+    requestAnimationFrame(loop);
+    
+    // ギミックアニメーション
+    gearGroup.rotation.z += 0.015;
+    alertLight.intensity = 1.5 + Math.sin(Date.now() * 0.006) * 1.0;
+
+    if (raceState === 0) {
+        renderer.render(scene, camera);
+        return;
+    }
+
+    // カウントダウン処理
+    if (raceState === 1) {
+        countdownTime -= 0.016;
+        let secondsInt = Math.ceil(countdownTime);
+        if (secondsInt > 0) {
+            document.getElementById("countdown").innerText = secondsInt;
+            if (secondsInt !== lastSecondsInt) { soundCount(); lastSecondsInt = secondsInt; }
+        } else {
+            document.getElementById("countdown").innerText = "GO!";
+            if (lastSecondsInt !== 0) { soundGo(); lastSecondsInt = 0; raceState = 2; }
+        }
+        
+        if (keys.w) { rocketTimer++; }
+        if (countdownTime < 0.6 && rocketTimer > 40) { rocketFailed = true; }
+        
+        if (countdownTime <= -1.0) {
+            document.getElementById("countdown").innerText = "";
+            if (rocketTimer > 15 && !rocketFailed) { turboTimer = 75; speed = 3.8; soundBoost(); document.getElementById("turbo-ui").innerText = "🔥 ロケットスタート成功！！！ 🔥"; document.getElementById("turbo-ui").style.color = "#ffcc00"; }
+            else if (rocketFailed) { isSquishedTimer = 90; speed = 0; document.getElementById("turbo-ui").innerText = "💥 オーバーヒート！！！ 💥"; document.getElementById("turbo-ui").style.color = "#ff3333"; }
+        }
+    }
+
+    // アイテムボックスの復活タイマー
+    itemBoxes.forEach(box => {
+        if (box.respawnTimer > 0) {
+            box.respawnTimer--;
+            if (box.respawnTimer === 0) { box.mesh.visible = true; }
+        } else {
+            box.mesh.rotation.y += 0.03; box.mesh.rotation.x += 0.01;
+        }
+    });
+
+    // アイテムボックス接触
+    if (raceState === 2 && !isItemRoulette && (!heldItems[0] || !heldItems[1])) {
+        itemBoxes.forEach(box => {
+            if (box.mesh.visible && carGroup.position.distanceTo(box.mesh.position) < 8.0) {
+                box.mesh.visible = false; box.respawnTimer = 280; soundItem();
+                isItemRoulette = true; rouletteTimer = 40; rouletteSlot = heldItems[0] ? 1 : 0;
+            }
         });
-        const roadMesh = new THREE.Mesh(roadGeometry, roadMaterial);
-        roadMesh.receiveShadow = true;
-        scene.add(roadMesh);
+    }
 
-        // --- 立体的な壁・ガードレールの完全復元 ---
-        const wallMaterial = new THREE.MeshStandardMaterial({ color: 0x3a3a44, metalness: 0.5, roughness: 0.5 });
-
-        for (let i = 0; i < NODE_COUNT; i++) {
-            let idx = i;
-            let nextIdx = (i + 1) % NODE_COUNT;
-            let curr = npcPathNodes[idx];
-            let next = npcPathNodes[nextIdx];
-
-            let forward = new THREE.Vector3().subVectors(next, curr);
-            let len = forward.length();
-            forward.normalize();
-            let right = new THREE.Vector3().crossVectors(forward, new THREE.Vector3(0, 1, 0)).normalize().multiplyScalar(roadWidth / 2);
-
-            let wallGeo = new THREE.BoxGeometry(1, 4, len);
-
-            // 左壁
-            let wl = new THREE.Mesh(wallGeo, wallMaterial);
-            let posL = curr.clone().add(forward.clone().multiplyScalar(len / 2)).sub(right).add(new THREE.Vector3(0, 2, 0));
-            wl.position.copy(posL);
-            wl.lookAt(next.clone().sub(right).add(new THREE.Vector3(0, 2, 0)));
-            wl.castShadow = true;
-            wl.receiveShadow = true;
-            scene.add(wl);
-
-            // 右壁
-            let wr = new THREE.Mesh(wallGeo, wallMaterial);
-            let posR = curr.clone().add(forward.clone().multiplyScalar(len / 2)).add(right).add(new THREE.Vector3(0, 2, 0));
-            wr.position.copy(posR);
-            wr.lookAt(next.clone().add(right).add(new THREE.Vector3(0, 2, 0)));
-            wr.castShadow = true;
-            wr.receiveShadow = true;
-            scene.add(wr);
+    // ルーレットアニメーション
+    if (isItemRoulette) {
+        rouletteTimer--;
+        let randomTicker = itemTypes[Math.floor(Math.random() * itemTypes.length)];
+        if (rouletteSlot === 0) { document.getElementById("item-slot-1").innerHTML = `ITEM 1<br>🎲 ${randomTicker}`; }
+        else { document.getElementById("item-slot-2").innerHTML = `ITEM 2<br>🎲 ${randomTicker}`; }
+        
+        if (rouletteTimer <= 0) {
+            isItemRoulette = false;
+            let currentRank = getPlayerRank();
+            let finalItem = getRandomItemByRank(currentRank);
+            if (rouletteSlot === 0) heldItems[0] = finalItem; else heldItems[1] = finalItem;
+            updateItemUI();
         }
+    }
 
-        // 工場の装飾：動く大歯車
-        const gears = [];
-        const gearGeo = new THREE.CylinderGeometry(20, 20, 4, 16);
-        const gearMat = new THREE.MeshStandardMaterial({ color: 0x666677, metalness: 0.8, roughness: 0.2 });
-        for (let i = 0; i < 3; i++) {
-            const gear = new THREE.Mesh(gearGeo, gearMat);
-            gear.position.set(-80 + i * 80, -5, -80);
-            gear.rotation.x = Math.PI / 2;
-            scene.add(gear);
-            gears.push(gear);
-        }
+    // バフタイマー減算
+    if (itemMushroomTimer > 0) itemMushroomTimer--;
+    if (itemMegaTimer > 0) { itemMegaTimer--; if (itemMegaTimer <= 0) carGroup.scale.set(1, 1, 1); }
+    if (itemStarTimer > 0) itemStarTimer--;
+    if (itemBooTimer > 0) itemBooTimer--;
+    if (itemBulletTimer > 0) itemBulletTimer--;
+    if (playerHitInvincibleTimer > 0) playerHitInvincibleTimer--;
+    if (jumpActionTimer > 0) jumpActionTimer--;
+    if (poleSpinTimer > 0) poleSpinTimer--;
 
-        // --- コイン、アイテムボックス、障害物の配置 ---
-        const coins = [];
-        const coinGeo = new THREE.CylinderGeometry(1.5, 1.5, 0.4, 16);
-        const coinMat = new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.9, roughness: 0.1 });
-        coinGeo.rotateX(Math.PI / 2);
+    if (itemGoldenTimer > 0) {
+        itemGoldenTimer--;
+        if (itemGoldenTimer <= 0 && heldItems[0] === "金キノコ") { heldItems[0] = heldItems[1]; heldItems[1] = null; updateItemUI(); }
+    }
 
-        const itemBoxes = [];
-        const itemBoxGeo = new THREE.BoxGeometry(3, 3, 3);
-        const itemBoxMat = new THREE.MeshStandardMaterial({ color: 0x00ffff, transparent: true, opacity: 0.7, wireframe: false });
+    // 💥 障害物接触判定群（大歯車＆ポール）
+    // 1. 大歯車ギミック
+    if (carGroup.position.distanceTo(gearGroup.position) < 32.0) {
+        hitPlayerObstacle("💥 工場の大歯車に巻き込まれた！！！ 💥");
+    }
+    // 2. ダートポール（中央配置2本）への衝突判定
+    const distToPole1 = Math.sqrt(Math.pow(carGroup.position.x - pole1Group.position.x, 2) + Math.pow(carGroup.position.z - pole1Group.position.z, 2));
+    const distToPole2 = Math.sqrt(Math.pow(carGroup.position.x - pole2Group.position.x, 2) + Math.pow(carGroup.position.z - pole2Group.position.z, 2));
+    if ((distToPole1 < 8.0 || distToPole2 < 8.0) && poleSpinTimer <= 0) {
+        hitPlayerObstacle("💥 工場の鉄柱ポールに激突した！！！ 💥");
+    }
 
-        const mudPools = [];
-        const mudGeo = new THREE.PlaneGeometry(16, 20);
-        const mudMat = new THREE.MeshBasicMaterial({ color: 0x4a2a0a, side: THREE.DoubleSide });
-        mudGeo.rotateX(-Math.PI / 2);
-
-        const crushers = [];
-        const crusherGeo = new THREE.BoxGeometry(10, 15, 10);
-        const crusherMat = new THREE.MeshStandardMaterial({ color: 0x22222a, metalness: 0.9, roughness: 0.1 });
-
-        // 各オブジェクトの配置
-        for (let i = 0; i < NODE_COUNT; i++) {
-            let curr = npcPathNodes[i];
-            let next = npcPathNodes[(i + 1) % NODE_COUNT];
-            let mid = new THREE.Vector3().addVectors(curr, next).multiplyScalar(0.5);
-
-            if (i % 3 === 1) {
-                const coin = new THREE.Mesh(coinGeo, coinMat);
-                coin.position.copy(mid).add(new THREE.Vector3(0, 1.5, 0));
-                scene.add(coin);
-                coins.push(coin);
-            }
-            if (i % 5 === 2) {
-                const box = new THREE.Mesh(itemBoxGeo, itemBoxMat);
-                box.position.copy(mid).add(new THREE.Vector3(0, 2, 0));
-                scene.add(box);
-                itemBoxes.push({ mesh: box, respawnTimer: 0 });
-            }
-            if (i === 15 || i === 18) {
-                const mud = new THREE.Mesh(mudGeo, mudMat);
-                mud.position.copy(mid).add(new THREE.Vector3(0, 0.05, 0));
-                scene.add(mud);
-                mudPools.push(mud);
-            }
-            if (i === 12 || i === 22) {
-                const crusher = new THREE.Mesh(crusherGeo, crusherMat);
-                crusher.position.copy(mid).add(new THREE.Vector3(0, 15, 0));
-                scene.add(crusher);
-                crushers.push({ mesh: crusher, cycle: Math.random() * Math.PI, state: 'up' });
+    // 甲羅の物理更新
+    for (let i = shells.length - 1; i >= 0; i--) {
+        let s = shells[i]; s.timer--;
+        if (s.timer <= 0) { scene.remove(s.mesh); shells.splice(i, 1); continue; }
+        
+        if (s.type === "赤甲羅") {
+            if (s.targetNpc === "player") {
+                let diff = new THREE.Vector3().subVectors(carGroup.position, s.mesh.position);
+                s.dir.lerp(diff.normalize(), 0.08).normalize();
+            } else if (s.targetNpc) {
+                let diff = new THREE.Vector3().subVectors(s.targetNpc.mesh.position, s.mesh.position);
+                s.dir.lerp(diff.normalize(), 0.08).normalize();
             }
         }
+        s.mesh.position.add(s.dir.clone().multiplyScalar(2.6));
+        s.mesh.rotation.y += 0.2;
 
-        // --- プレイヤーとNPCの設定 ---
-        const kartGeo = new THREE.BoxGeometry(3, 1.5, 5);
-        const playerMat = new THREE.MeshStandardMaterial({ color: 0xff3333, metalness: 0.5, roughness: 0.5 });
-        const player = new THREE.Mesh(kartGeo, playerMat);
-        player.position.set(0, 0.75, 0);
-        player.castShadow = true;
-        scene.add(player);
-
-        let speed = 0;
-        let maxSpeed = 1.6;
-        const accel = 0.02;
-        const drag = 0.985;
-        let angle = Math.PI;
-
-        const keys = {};
-        window.addEventListener('keydown', e => { keys[e.code] = true; });
-        window.addEventListener('keyup', e => { keys[e.code] = false; });
-
-        let coinCount = 0;
-        let playerLap = 1;
-        let currentProgressNode = 0;
-        let currentItem = null;
-        let itemAmmo = 0;
-        let isSquishedTimer = 0;
-        let itemMushroomTimer = 0;
-        let itemGoldenTimer = 0;
-        let itemBooTimer = 0;
-        let playerHitInvincibleTimer = 0;
-        let countdownVal = 3;
-        let gameActive = false;
-
-        const speedVal = document.getElementById('speed-val');
-        const coinVal = document.getElementById('coin-val');
-        const lapVal = document.getElementById('lap-val');
-        const countdown = document.getElementById('countdown');
-        const turboText = document.getElementById('turbo-text');
-        const playerItemImg = document.getElementById('player-item-img');
-        const itemAmmoUi = document.getElementById('item-ammo-ui');
-        const itemAmmoVal = document.getElementById('item-ammo-val');
-
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        function playTone(freq, duration, type="sine") {
-            try {
-                let osc = audioCtx.createOscillator();
-                let gain = audioCtx.createGain();
-                osc.type = type;
-                osc.frequency.value = freq;
-                gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
-                osc.connect(gain);
-                gain.connect(audioCtx.destination);
-                osc.start();
-                osc.stop(audioCtx.currentTime + duration);
-            } catch(e){}
-        }
-        function soundCoin() { playTone(880, 0.1); setTimeout(()=>playTone(1320, 0.2), 80); }
-        function soundItem() { playTone(440, 0.05); setTimeout(()=>playTone(660, 0.05), 50); setTimeout(()=>playTone(880, 0.1), 100); }
-        function soundUseItem() { playTone(587.33, 0.15, "square"); }
-        function soundHit() { playTone(150, 0.4, "sawtooth"); }
-
-        const npcColors = [0x3333ff, 0x33ff33, 0xffff33];
-        const npcs = npcColors.map((color, index) => {
-            const mat = new THREE.MeshStandardMaterial({ color: color, metalness: 0.5, roughness: 0.5 });
-            const mesh = new THREE.Mesh(kartGeo, mat);
-            mesh.castShadow = true;
-            scene.add(mesh);
-            return {
-                mesh: mesh,
-                progress: 0.005 + index * 0.002,
-                speed: 0.9 + Math.random() * 0.2,
-                lap: 1,
-                isMega: 0,
-                heldItem: null,
-                itemUseTimer: 0
-            };
-        });
-
-        const ballGeo = new THREE.SphereGeometry(4, 16, 16);
-        const ballMat = new THREE.MeshStandardMaterial({ color: 0x111111, metalness: 0.9, roughness: 0.1 });
-        const ironBall = new THREE.Mesh(ballGeo, ballMat);
-        ironBall.castShadow = true;
-        scene.add(ironBall);
-        let ballProgress = 0.5;
-
-        const ITEM_TYPES = [
-            { name: "ダッシュキノコ", img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/active-items/mach-bike.png", color: 0xff0000 },
-            { name: "トリプルキノコ", img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/active-items/mach-bike.png", color: 0xff3333 },
-            { name: "金ピカキノコ", img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/active-items/mach-bike.png", color: 0xffd700 },
-            { name: "テレサ", img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/active-items/mach-bike.png", color: 0xaaaaaa },
-            { name: "サンダー", img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/active-items/mach-bike.png", color: 0xffff00 },
-            { name: "メガキノコ", img: "https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/items/active-items/mach-bike.png", color: 0xff8800 }
-        ];
-
-        const cdInterval = setInterval(() => {
-            countdownVal--;
-            if (countdownVal > 0) {
-                countdown.innerText = countdownVal;
-                playTone(440, 0.1);
-            } else if (countdownVal === 0) {
-                countdown.innerText = "GO!";
-                playTone(880, 0.3);
-                gameActive = true;
+        // プレイヤーへの衝突
+        if (s.mesh.position.distanceTo(carGroup.position) < 6.0) {
+            scene.remove(s.mesh); shells.splice(i, 1);
+            if (isItemShielding && shieldShellMesh) {
+                carGroup.remove(shieldShellMesh); shieldShellMesh = null; isItemShielding = false;
+                heldItems[0] = heldItems[1]; heldItems[1] = null; updateItemUI();
             } else {
-                countdown.style.display = 'none';
-                clearInterval(cdInterval);
+                hitPlayerObstacle(s.type === "緑甲羅" ? "🟢 甲羅が直撃した！！！ 🟢" : "🔴 追尾甲羅に狙い撃ちされた！！！ 🔴");
             }
-        }, 1000);
-
-        const clock = new THREE.Clock();
-
-        function dropCoins() {
-            let countToDrop = Math.min(coinCount, 3);
-            coinCount -= countToDrop;
-            coinVal.innerText = coinCount;
-            for(let i=0; i<countToDrop; i++) {
-                const dCoin = new THREE.Mesh(coinGeo, coinMat);
-                dCoin.position.copy(player.position).add(new THREE.Vector3((Math.random()-0.5)*15, 1, (Math.random()-0.5)*15));
-                scene.add(dCoin);
-                coins.push(dCoin);
-                setTimeout(() => {
-                    scene.remove(dCoin);
-                    const idx = coins.indexOf(dCoin);
-                    if(idx > -1) coins.splice(idx, 1);
-                }, 10000);
+            continue;
+        }
+        // NPCへの衝突
+        let hitNpc = false;
+        for (let n = 0; n < npcs.length; n++) {
+            let npc = npcs[n];
+            if (s.mesh.position.distanceTo(npc.mesh.position) < 6.0 && npc.isStar <= 0) {
+                scene.remove(s.mesh); shells.splice(i, 1); hitNpc = true;
+                npc.isSquished = 60; dropNpcItems(npc); break;
             }
         }
+        if (hitNpc) continue;
+    }
 
-        function triggerThunder() {
-            playTone(1000, 0.5, "triangle");
-            scene.background = new THREE.Color(0xffffff);
-            setTimeout(() => { scene.background = new THREE.Color(0x1a1a24); }, 150);
-            npcs.forEach(npc => {
-                if(npc.isMega <= 0) {
-                    npc.speed *= 0.5;
-                    npc.mesh.scale.set(0.5, 0.25, 0.5);
-                    setTimeout(() => {
-                        npc.speed = 0.9 + Math.random()*0.2;
-                        npc.mesh.scale.set(1, 1, 1);
-                    }, 5000);
-                }
-            });
-        }
-
-        function activateMega() {
-            playTone(330, 0.2);
-            player.scale.set(3, 3, 3);
-            maxSpeed = 2.4;
-            setTimeout(() => {
-                player.scale.set(1, 1, 1);
-                maxSpeed = 1.6;
-            }, 6000);
-        }
-
-        function useItem() {
-            if (!currentItem) return;
-            soundUseItem();
-            if (currentItem.name === "ダッシュキノコ") {
-                itemMushroomTimer = 90;
-                currentItem = null;
-            } else if (currentItem.name === "トリプルキノコ") {
-                itemMushroomTimer = 90;
-                itemAmmo--;
-                itemAmmoVal.innerText = itemAmmo;
-                if(itemAmmo <= 0) { currentItem = null; itemAmmoUi.style.display = "none"; }
-            } else if (currentItem.name === "金ピカキノコ") {
-                itemMushroomTimer = 90;
-                itemGoldenTimer--;
-                if(itemGoldenTimer <= 0) { currentItem = null; }
-            } else if (currentItem.name === "テレサ") {
-                itemBooTimer = 240;
-                currentItem = null;
-                coins.forEach(c => {
-                    let d = player.position.distanceTo(c.position);
-                    if(d < 60) {
-                        scene.remove(c);
-                        const idx = coins.indexOf(c);
-                        if(idx > -1) coins.splice(idx, 1);
-                        coinCount = Math.min(coinCount + 1, 10);
-                        coinVal.innerText = coinCount;
-                        soundCoin();
-                    }
-                });
-            } else if (currentItem.name === "サンダー") {
-                triggerThunder();
-                currentItem = null;
-            } else if (currentItem.name === "メガキノコ") {
-                activateMega();
-                currentItem = null;
-            }
-
-            if(!currentItem) {
-                playerItemImg.style.display = "none";
-            }
-        }
-
-        function update() {
-            requestAnimationFrame(update);
-            const delta = clock.getDelta();
-
-            alarmLight.intensity = 1.5 + Math.sin(Date.now() * 0.005) * 1.0;
-            gears.forEach((g, idx) => { g.rotation.z += (idx % 2 === 0 ? 0.02 : -0.02); });
-
-            if (!gameActive) {
-                renderer.render(scene, camera);
-                return;
-            }
-
-            if (isSquishedTimer > 0) { isSquishedTimer--; player.scale.set(1.5, 0.1, 1.5); }
-            else { player.scale.set(1, 1, 1); }
-            if (playerHitInvincibleTimer > 0) playerHitInvincibleTimer--;
-            if (itemMushroomTimer > 0) itemMushroomTimer--;
-            if (itemBooTimer > 0) itemBooTimer--;
-
-            if (isSquishedTimer <= 0) {
-                if (keys['ArrowUp'] || keys['KeyW']) {
-                    let effMax = maxSpeed * (1 + coinCount * 0.03);
-                    if (itemMushroomTimer > 0) effMax *= 1.6;
-                    if (speed < effMax) speed += accel;
-                } else if (keys['ArrowDown'] || keys['KeyS']) {
-                    if (speed > -maxSpeed * 0.5) speed -= accel;
-                } else {
-                    speed *= drag;
-                    if (Math.abs(speed) < 0.01) speed = 0;
-                }
-
-                if (keys['ArrowLeft'] || keys['KeyA']) { angle += 0.04; }
-                if (keys['ArrowRight'] || keys['KeyD']) { angle -= 0.04; }
+    // 散らばったアイテム・コインの回収判定
+    for (let i = droppedItems.length - 1; i >= 0; i--) {
+        let d = droppedItems[i]; d.timer--;
+        d.mesh.rotation.y += 0.04;
+        if (d.timer <= 0) { scene.remove(d.mesh); droppedItems.splice(i, 1); continue; }
+        
+        if (carGroup.position.distanceTo(d.mesh.position) < 5.5) {
+            scene.remove(d.mesh); droppedItems.splice(i, 1);
+            if (d.type === "コイン") {
+                coins = Math.min(coins + 1, 10);
+                document.getElementById("coin-text").innerText = `🪙 コイン: ${coins}/10`;
+                playTone(880, 0.1, 'sine', 0.1);
             } else {
-                speed *= drag;
+                if (playerHitInvincibleTimer <= 0 && itemStarTimer <= 0 && itemBulletTimer <= 0 && itemMegaTimer <= 0) {
+                    isSquishedTimer = 55; speed = 0; dropCoins(); dropPlayerItems();
+                    document.getElementById("turbo-ui").innerText = `💥 スピンしたアイテム(${d.type})に激突！ 💥`;
+                    document.getElementById("turbo-ui").style.color = "#ff3333";
+                }
             }
+            continue;
+        }
+    }
 
+    // コース上固定配置コインの回収
+    coinsArray.forEach(c => {
+        if (!c.collected) {
+            c.mesh.rotation.y += 0.04;
+            if (carGroup.position.distanceTo(c.mesh.position) < 6.0) {
+                c.collected = true; c.mesh.visible = false;
+                coins = Math.min(coins + 1, 10);
+                document.getElementById("coin-text").innerText = `🪙 コイン: ${coins}/10`;
+                playTone(880, 0.1, 'sine', 0.1);
+            }
+        }
+    });
+
+    // NPCの位置更新
+    updateNpcs();
+
+    // 順位・LapUIの更新
+    let pRank = getPlayerRank();
+    document.getElementById("rank-text").innerText = `順位: ${pRank} / 12位`;
+    document.getElementById("lap-text").innerText = isFinished ? "🏁 FINISH!" : `Lap: ${playerLap} / 3`;
+
+    // 🚀 キラー自動高速巡航システム
+    if (itemBulletTimer > 0) {
+        bulletProgress += 0.0055;
+        if (bulletProgress >= 1.0) { bulletProgress -= 1.0; playerLap++; }
+        
+        let seg = Math.floor(bulletProgress * NODE_COUNT);
+        let segPct = (bulletProgress * NODE_COUNT) % 1;
+        let startN = npcPathNodes[seg % NODE_COUNT];
+        let endN = npcPathNodes[(seg + 1) % NODE_COUNT];
+        
+        carGroup.position.set(startN.x, 1.5, startN.z + (endN.z - startN.z)*segPct);
+        carGroup.lookAt(endN.x, 1.5, endN.z);
+        speed = 3.6; angle = carGroup.rotation.y;
+        
+        document.getElementById("turbo-ui").innerText = "🚀🚀 キラー自動巡航中！！！無敵！！！ 🚀🚀";
+        document.getElementById("turbo-ui").style.color = "#ff3333";
+    } 
+    // 🏎️ プレイヤーの通常操作物理演算
+    else {
+        if (isSquishedTimer > 0) {
+            isSquishedTimer--; speed = 0; carGroup.scale.set(1.5, 0.08, 1.5);
+        } else {
+            // スケール復帰
+            if (itemMegaTimer > 0) carGroup.scale.set(2.0, 2.0, 2.0);
+            else carGroup.scale.set(1.0, 1.0, 1.0);
+
+            // 加速＆最高速度（コイン＆キノコ補正）
+            let maxSp = baseMaxSpeed + (coins * 0.05);
+            if (itemMushroomTimer > 0) maxSp *= 1.55;
+            if (itemMegaTimer > 0) maxSp *= 1.25;
+            if (itemStarTimer > 0) maxSp *= 1.35;
+
+            // 地面減速エリア（泥・水プール等）
             let inMud = false;
-            mudPools.forEach(mud => {
-                if (player.position.distanceTo(mud.position) < 12) { inMud = true; }
-            });
-            if (inMud && itemMushroomTimer <= 0) { speed *= 0.85; }
-
-            if (keys['Space']) { keys['Space'] = false; useItem(); }
-
-            // 現在の進捗位置に応じた高さを正確に計算する
-            let progressRatio = currentProgressNode / NODE_COUNT;
-            let currentSegment = Math.floor(progressRatio * NODE_COUNT);
-            let startY = npcPathNodes[currentSegment % NODE_COUNT].y;
-            let endY = npcPathNodes[(currentSegment + 1) % NODE_COUNT].y;
-            let segmentPercent = (progressRatio * NODE_COUNT) % 1;
-            let targetY = startY + (endY - startY) * segmentPercent + 0.75;
-
-            // プレイヤー位置と高低差の連動
-            player.position.x += Math.sin(angle) * speed;
-            player.position.y = THREE.MathUtils.lerp(player.position.y, targetY, 0.1);
-            player.position.z += Math.cos(angle) * speed;
-            player.rotation.y = angle;
-
-            speedVal.innerText = Math.round(Math.abs(speed) * 80);
-
-            ballProgress += 0.003;
-            let ballSegment = Math.floor(ballProgress * NODE_COUNT);
-            let ballPercent = (ballProgress * NODE_COUNT) % 1;
-            let bStart = npcPathNodes[ballSegment % NODE_COUNT];
-            let bEnd = npcPathNodes[(ballSegment + 1) % NODE_COUNT];
-            ironBall.position.set(
-                bStart.x + (bEnd.x - bStart.x)*ballPercent,
-                bStart.y + (bEnd.y - bStart.y)*ballPercent + 4,
-                bStart.z + (bEnd.z - bStart.z)*ballPercent
-            );
-
-            if (player.position.distanceTo(ironBall.position) < 5.5 && playerHitInvincibleTimer <= 0 && itemMushroomTimer <= 0) {
-                isSquishedTimer = 90; speed = 0;
-                playerHitInvincibleTimer = 180;
-                soundHit(); dropCoins();
+            if (carGroup.position.z < -340 && carGroup.position.z > -460) {
+                if (carGroup.position.x > -50 && carGroup.position.x < 300) { inMud = true; }
             }
+            if (inMud && itemMushroomTimer <= 0 && itemStarTimer <= 0 && itemBulletTimer <= 0) { maxSp *= 0.4; }
 
-            crushers.forEach(crusher => {
-                crusher.cycle += delta * 4;
-                let baseY = crusher.mesh.position.y;
-                let y = crusher.mesh.position.y + Math.sin(crusher.cycle) * 11;
-                crusher.mesh.position.y = y;
+            if (keys.w) { if (speed < maxSp) speed += 0.04; else speed *= 0.97; } 
+            else if (keys.s) { if (speed > -1.0) speed -= 0.04; } 
+            else { speed *= 0.93; }
 
-                if (y < (baseY + 2.0) && player.position.distanceTo(crusher.mesh.position) < 6.5 && isSquishedTimer <= 0) {
-                    isSquishedTimer = 100; speed = 0;
-                    soundHit(); dropCoins();
-                }
-            });
+            // ハンドル操作
+            let turnSpeed = 0.032;
+            if (isDrifting) turnSpeed = 0.045;
+            if (keys.a) { angle += turnSpeed; }
+            if (keys.d) { angle -= turnSpeed; }
 
-            coins.forEach(coin => {
-                coin.rotation.y += 0.05;
-                if (player.position.distanceTo(coin.position) < 3.5) {
-                    scene.remove(coin);
-                    const idx = coins.indexOf(coin);
-                    if (idx > -1) coins.splice(idx, 1);
-                    coinCount = Math.min(coinCount + 1, 10);
-                    coinVal.innerText = coinCount;
-                    soundCoin();
-                }
-            });
-
-            itemBoxes.forEach(box => {
-                if (box.respawnTimer > 0) {
-                    box.respawnTimer--;
-                    if (box.respawnTimer === 0) { scene.add(box.mesh); }
+            // ミニターボ＆ドリフト
+            if (keys.shift && Math.abs(speed) > 0.5 && (keys.a || keys.d)) {
+                if (!isDrifting) { isDrifting = true; driftDir = keys.a ? 1 : -1; driftCharge = 0; }
+                driftCharge++;
+                sparkLeft.visible = true; sparkRight.visible = true;
+                if (driftCharge > 85) {
+                    turboState = 2; sparkLeft.material.color.setHex(0x00ffff); sparkRight.material.color.setHex(0x00ffff);
+                } else if (driftCharge > 40) {
+                    turboState = 1; sparkLeft.material.color.setHex(0x0055ff); sparkRight.material.color.setHex(0x0055ff);
                 } else {
-                    box.mesh.rotation.x += 0.02;
-                    box.mesh.rotation.y += 0.02;
-                    if (player.position.distanceTo(box.mesh.position) < 3.5) {
-                        scene.remove(box.mesh);
-                        box.respawnTimer = 300;
-                        soundItem();
-                        if (!currentItem) {
-                            currentItem = ITEM_TYPES[Math.floor(Math.random() * ITEM_TYPES.length)];
-                            playerItemImg.src = currentItem.img;
-                            playerItemImg.style.display = "block";
-                            playerItemImg.style.border = `4px solid ${currentItem.color}`;
-                            if(currentItem.name === "トリプルキノコ") {
-                                itemAmmo = 3; itemAmmoVal.innerText = itemAmmo; itemAmmoUi.style.display = "block";
-                            } else if(currentItem.name === "金ピカキノコ") {
-                                itemGoldenTimer = 300;
-                            }
-                        }
-                    }
+                    turboState = 0; sparkLeft.material.color.setHex(0xff4500); sparkRight.material.color.setHex(0xff4500);
                 }
-            });
-
-            let nextNodeIdx = (currentProgressNode + 1) % NODE_COUNT;
-            if (player.position.distanceTo(npcPathNodes[nextNodeIdx]) < 25) {
-                currentProgressNode = nextNodeIdx;
-                if (currentProgressNode === 0) {
-                    playerLap++;
-                    lapVal.innerText = playerLap;
-                    if (playerLap > 3) {
-                        gameActive = false;
-                        showFinalResults();
-                    }
+            } else {
+                if (isDrifting) {
+                    isDrifting = false; sparkLeft.visible = false; sparkRight.visible = false;
+                    if (turboState === 2) { turboTimer = 65; speed = 3.4; soundBoost(); document.getElementById("turbo-ui").innerText = "🔥🔴 ウルトラミニターボ発動！！！ 🔴🔥"; document.getElementById("turbo-ui").style.color = "#ff3333"; }
+                    else if (turboState === 1) { turboTimer = 40; speed = 2.8; soundBoost(); document.getElementById("turbo-ui").innerText = "🔥🔵 スーパーミニターボ発動！！！ 🔵🔥"; document.getElementById("turbo-ui").style.color = "#0077ff"; }
+                    turboState = 0; driftCharge = 0;
                 }
             }
 
-            npcs.forEach((npc, index) => {
-                let nSpeed = (0.001 * npc.speed);
-                npc.progress += nSpeed;
-                if (npc.progress >= 1) { npc.progress -= 1; npc.lap++; }
+            // ジャンプチャージ
+            if (keys[" "] && carY <= 0.15 && poleSpinTimer <= 0) { jumpChargeTime++; }
 
-                let p = Math.max(0, npc.progress);
-                let segment = Math.floor(p * NODE_COUNT);
-                let segmentPercent = (p * NODE_COUNT) % 1;
-                let startNode = npcPathNodes[segment % NODE_COUNT];
-                let endNode = npcPathNodes[(segment + 1) % NODE_COUNT];
-                npc.mesh.position.set(
-                    startNode.x + (endNode.x - startNode.x) * segmentPercent,
-                    startNode.y + (endNode.y - startNode.y) * segmentPercent + 0.75,
-                    startNode.z + (endNode.z - startNode.z) * segmentPercent + ((index % 2 === 0) ? 5 : -5)
-                );
-            });
+            // ブーストUI表示消去
+            if (turboTimer > 0) { turboTimer--; } else { if(document.getElementById("turbo-ui").innerText.includes("ターボ") || document.getElementById("turbo-ui").innerText.includes("スタート")) document.getElementById("turbo-ui").innerText = ""; }
 
-            let targetCamPos = new THREE.Vector3(
-                player.position.x - Math.sin(angle) * 25,
-                player.position.y + 11,
-                player.position.z - Math.cos(angle) * 25
-            );
-            camera.position.lerp(targetCamPos, 0.1);
-            camera.lookAt(player.position.clone().add(new THREE.Vector3(0, 2, 0)));
-
-            renderer.render(scene, camera);
+            // 物理位置適用
+            carGroup.position.x += Math.sin(angle) * speed;
+            carGroup.position.z += Math.cos(angle) * speed;
+            carGroup.rotation.y = angle;
         }
 
-        function showFinalResults() {
-            let totalTime = (performance.now() / 1000).toFixed(2);
-            let resultHtml = `
-                <div style="color: #fff; font-size: 32px; text-shadow: 2px 2px 5px #000; text-align: center;">
-                    🏁 FINISH! 🏁<br>
-                    Total Time: ${totalTime}s<br>
-                    <span style="font-size: 16px; color: #888;">リロードでもう一度遊べます</span>
-                </div>
-            `;
-            let div = document.createElement('div');
-            div.style.position = 'absolute';
-            div.style.top = '50%';
-            div.style.left = '50%';
-            div.style.transform = 'translate(-50%, -50%)';
-            div.style.background = 'rgba(0,0,0,0.85)';
-            div.style.padding = '30px';
-            div.style.borderRadius = '15px';
-            div.style.boxShadow = '0 0 20px #00ffff';
-            div.style.zIndex = '100';
-            div.innerHTML = resultHtml;
-            document.body.appendChild(div);
+        // 壁キック＆壁走り３次元高度物理エンジン（工場壁寄せ仕様対応）
+        let insideFactoryX = (carGroup.position.z < 50 && carGroup.position.z > -150);
+        isWallRiding = false;
+        
+        if (insideFactoryX) {
+            // 右の壁際
+            if (carGroup.position.x >= RIGHT_WALL_X - 6) {
+                carGroup.position.x = RIGHT_WALL_X - 6; isWallRiding = true; wallRideSide = 1;
+            }
+            // 左の壁際
+            if (carGroup.position.x <= LEFT_WALL_X + 6) {
+                carGroup.position.x = LEFT_WALL_X + 6; isWallRiding = true; wallRideSide = -1;
+            }
         }
 
-        update();
+        if (wallKickIgnoreTimer > 0) { wallKickIgnoreTimer--; } else { wallKickVelocityX *= 0.85; }
+        carGroup.position.x += wallKickVelocityX;
 
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        }, false);
-    </script>
+        // 垂直ジャンプ・トリックアクション３次元物理
+        if (poleSpinTimer > 0) {
+            carGroup.rotation.y += 0.35; 
+            document.getElementById("turbo-ui").innerText = "🌀 スピンジャンプトリック！！！ 🌀";
+            document.getElementById("turbo-ui").style.color = "#00ffff";
+        }
+        
+        if (jumpActionTimer > 0) {
+            carModel.rotation.x += jumpRotX; carModel.rotation.z += jumpRotZ;
+        } else {
+            carModel.rotation.set(0,0,0);
+        }
+
+        jumpVelocity -= 0.035; carY += jumpVelocity;
+        if (carY <= 0) {
+            carY = 0; jumpVelocity = 0;
+            if (hasJumpActioned) {
+                hasJumpActioned = false; turboTimer = 35; speed += 0.45; soundBoost();
+                if(!isWallRiding && poleSpinTimer <= 0 && !document.getElementById("turbo-ui").innerText.includes("壁キック")) {
+                    document.getElementById("turbo-ui").innerText = "✨ トリック着地ブースト成功！！！ ✨";
+                    document.getElementById("turbo-ui").style.color = "#ffeb3b";
+                }
+            }
+        }
+        carGroup.position.y = carY + 0.4;
+    }
+
+    // 🏁 チェックポイント・周回判定エンジン
+    if (carGroup.position.z < -200 && carGroup.position.z > -400) { midCheckpointPassed = true; }
+    
+    // 黄色いエントリーゾーン通過でレーススタート判定
+    if (raceState === 2 && carGroup.position.z < 130 && carGroup.position.z > 90 && Math.abs(carGroup.position.x) < 40) {
+        document.getElementById("status-text").innerText = "レース中！上位を目指そう！"; document.getElementById("status-text").style.color = "#00ff00";
+    }
+
+    // ゴールライン通過
+    if (midCheckpointPassed && carGroup.position.z < 60 && carGroup.position.z > 40 && Math.abs(carGroup.position.x) < 40) {
+        midCheckpointPassed = false;
+        if (!isFinished) {
+            playerLap++;
+            if (playerLap > 3) {
+                isFinished = true; raceState = 3;
+                document.getElementById("status-text").innerText = `🎉 レース終了！最終順位: ${getPlayerRank()}位 🎉`;
+                document.getElementById("status-text").style.color = "#ffeb3b";
+                document.getElementById("countdown").innerText = "FINISH!";
+            } else {
+                document.getElementById("status-text").innerText = `LAP ${playerLap} に突入！`;
+                document.getElementById("status-text").style.color = "#ffff00";
+            }
+        }
+    }
+
+    // 🎥 ３D背後追従シネマティックカメラワーク
+    let targetCam = new THREE.Vector3(
+        carGroup.position.x - Math.sin(angle) * 22,
+        carGroup.position.y + 7.5,
+        carGroup.position.z - Math.cos(angle) * 22
+    );
+    currentCameraPos.lerp(targetCam, 0.12);
+    camera.position.copy(currentCameraPos);
+    camera.lookAt(carGroup.position.x, carGroup.position.y + 1.5, carGroup.position.z);
+
+    renderer.render(scene, camera);
+}
+
+// 起動配置とループ開始
+startRaceGridPlacement();
+loop();
+
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+</script>
 </body>
 </html>
