@@ -2,7 +2,7 @@
 <html lang="ja">
 <head>
     <meta charset="UTF-8">
-    <title>マリカのパクリ</title>
+    <title>マリカのパクリ - 立体コース完全修正版</title>
     <style>
         body { margin: 0; overflow: hidden; background: #000; font-family: sans-serif; }
         #ui-container {
@@ -77,22 +77,47 @@
         alarmLight.position.set(0, 30, 0);
         scene.add(alarmLight);
 
-const npcPathNodes = [
-            { x: 0, z: 300 },
-            { x: 0, z: 0 },
-            { x: 0, z: -200 },
-            { x: -300, z: -200 },
-            { x: -300, z: -400 },
-            { x: -100, z: -400 },
-            { x: -90, z: -400 },
-            { x: 0, z: -400 },
-            { x: 125, z: -400 },
-            { x: 250, z: -400 },
-            { x: 350, z: -400 },
-            { x: 350, z: -100 },
-            { x: 200, z: -100 },
-            { x: 200, z: 250 },
-            { x: 0, z: 250 }
+        // コース形状ノードの総数
+        const NODE_COUNT = 36;
+
+        // デザインのファイルから復元した立体コースノード（80行目〜119行目）
+        const npcPathNodes = [
+            new THREE.Vector3(0, 0, 0),
+            new THREE.Vector3(0, 0, -40),
+            new THREE.Vector3(0, 0, -80),
+            new THREE.Vector3(0, 0, -120),
+            new THREE.Vector3(10, 0, -150),
+            new THREE.Vector3(30, 0, -170),
+            new THREE.Vector3(60, 0, -180),
+            new THREE.Vector3(100, 0, -180),
+            new THREE.Vector3(140, 0, -180),
+            new THREE.Vector3(180, 0, -180),
+            new THREE.Vector3(210, 2, -160),
+            new THREE.Vector3(220, 6, -130),
+            new THREE.Vector3(220, 12, -90),
+            new THREE.Vector3(220, 16, -50),
+            new THREE.Vector3(220, 20, -10),
+            new THREE.Vector3(210, 20, 20),
+            new THREE.Vector3(180, 18, 40),
+            new THREE.Vector3(140, 14, 40),
+            new THREE.Vector3(100, 8, 40),
+            new THREE.Vector3(60, 2, 40),
+            new THREE.Vector3(20, 0, 40),
+            new THREE.Vector3(-20, 0, 40),
+            new THREE.Vector3(-50, 0, 50),
+            new THREE.Vector3(-70, 0, 70),
+            new THREE.Vector3(-80, 0, 100),
+            new THREE.Vector3(-80, 0, 140),
+            new THREE.Vector3(-80, 0, 180),
+            new THREE.Vector3(-70, 0, 210),
+            new THREE.Vector3(-50, 0, 230),
+            new THREE.Vector3(-20, 0, 240),
+            new THREE.Vector3(20, 0, 240),
+            new THREE.Vector3(60, 0, 230),
+            new THREE.Vector3(80, 0, 200),
+            new THREE.Vector3(80, 0, 150),
+            new THREE.Vector3(50, 0, 100),
+            new THREE.Vector3(20, 0, 40)
         ];
 
         const roadWidth = 26;
@@ -101,7 +126,7 @@ const npcPathNodes = [
         const indices = [];
         const colors = [];
 
-        // 元の index (2).html の立体形状生成ロジック
+        // 立体形状生成ロジック
         for (let i = 0; i <= NODE_COUNT; i++) {
             let idx = i % NODE_COUNT;
             let nextIdx = (i + 1) % NODE_COUNT;
@@ -208,7 +233,7 @@ const npcPathNodes = [
         const crusherGeo = new THREE.BoxGeometry(10, 15, 10);
         const crusherMat = new THREE.MeshStandardMaterial({ color: 0x22222a, metalness: 0.9, roughness: 0.1 });
 
-        // 元の位置情報に基づくオブジェクトの正確な配置
+        // 各オブジェクトの配置
         for (let i = 0; i < NODE_COUNT; i++) {
             let curr = npcPathNodes[i];
             let next = npcPathNodes[(i + 1) % NODE_COUNT];
@@ -489,7 +514,7 @@ const npcPathNodes = [
 
             // プレイヤー位置と高低差の連動
             player.position.x += Math.sin(angle) * speed;
-            player.position.y = THREE.MathUtils.lerp(player.position.y, targetY, 0.1); // Y座標を高低差になじませる
+            player.position.y = THREE.MathUtils.lerp(player.position.y, targetY, 0.1);
             player.position.z += Math.cos(angle) * speed;
             player.rotation.y = angle;
 
