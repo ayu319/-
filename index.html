@@ -77,45 +77,22 @@
         alarmLight.position.set(0, 30, 0);
         scene.add(alarmLight);
 
-        // --- 元の美しい立体3Dコース生成コードを100%完全復元 ---
-        const NODE_COUNT = 36;
-        const npcPathNodes = [
-            new THREE.Vector3(0, 0, 0),
-            new THREE.Vector3(0, 0, -40),
-            new THREE.Vector3(0, 0, -80),
-            new THREE.Vector3(0, 0, -120),
-            new THREE.Vector3(10, 0, -150),
-            new THREE.Vector3(30, 0, -170),
-            new THREE.Vector3(60, 0, -180),
-            new THREE.Vector3(100, 0, -180),
-            new THREE.Vector3(140, 0, -180),
-            new THREE.Vector3(180, 0, -180),
-            new THREE.Vector3(210, 2, -160),
-            new THREE.Vector3(220, 6, -130),
-            new THREE.Vector3(220, 12, -90),
-            new THREE.Vector3(220, 16, -50),
-            new THREE.Vector3(220, 20, -10),
-            new THREE.Vector3(210, 20, 20),
-            new THREE.Vector3(180, 18, 40),
-            new THREE.Vector3(140, 14, 40),
-            new THREE.Vector3(100, 8, 40),
-            new THREE.Vector3(60, 2, 40),
-            new THREE.Vector3(20, 0, 40),
-            new THREE.Vector3(-20, 0, 40),
-            new THREE.Vector3(-50, 0, 50),
-            new THREE.Vector3(-70, 0, 70),
-            new THREE.Vector3(-80, 0, 100),
-            new THREE.Vector3(-80, 0, 140),
-            new THREE.Vector3(-80, 0, 180),
-            new THREE.Vector3(-70, 0, 210),
-            new THREE.Vector3(-50, 0, 230),
-            new THREE.Vector3(-20, 0, 240),
-            new THREE.Vector3(20, 0, 240),
-            new THREE.Vector3(60, 0, 230),
-            new THREE.Vector3(80, 0, 200),
-            new THREE.Vector3(80, 0, 150),
-            new THREE.Vector3(50, 0, 100),
-            new THREE.Vector3(20, 0, 40)
+const npcPathNodes = [
+            { x: 0, z: 300 },
+            { x: 0, z: 0 },
+            { x: 0, z: -200 },
+            { x: -300, z: -200 },
+            { x: -300, z: -400 },
+            { x: -100, z: -400 },
+            { x: -90, z: -400 },
+            { x: 0, z: -400 },
+            { x: 125, z: -400 },
+            { x: 250, z: -400 },
+            { x: 350, z: -400 },
+            { x: 350, z: -100 },
+            { x: 200, z: -100 },
+            { x: 200, z: 250 },
+            { x: 0, z: 250 }
         ];
 
         const roadWidth = 26;
